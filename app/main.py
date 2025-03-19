@@ -1,5 +1,4 @@
 import os
-import logging
 from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -10,10 +9,16 @@ from dotenv import load_dotenv
 from app.api.routes import router as api_router
 from app.core.config import settings
 from loguru import logger
+
 # Настройка логирования
-logger.add("app.log", encoding="utf-8", rotation="10MB", 
-           compression="zip",
-           format="{time}|{file}:{line}|{level} {message}", level="INFO")
+logger.add(
+    "app.log",
+    encoding="utf-8",
+    rotation="10MB",
+    compression="zip",
+    format="{time}|{file}:{line}|{level} {message}",
+    level="INFO",
+)
 # logger = logging.getLogger(__name__)
 
 # Загрузка переменных окружения
@@ -36,7 +41,11 @@ app.add_middleware(
 
 # Монтирование статических файлов
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
-app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR, html=True), name="uploads")
+app.mount(
+    "/uploads",
+    StaticFiles(directory=settings.UPLOAD_DIR, html=True),
+    name="uploads",
+)
 
 # Подключение шаблонов
 templates = Jinja2Templates(directory="app/templates")
@@ -44,10 +53,12 @@ templates = Jinja2Templates(directory="app/templates")
 # Подключение маршрутов API
 app.include_router(api_router, prefix="/api")
 
+
 @app.get("/")
 async def index(request: Request):
     """Главная страница приложения"""
     return templates.TemplateResponse("index.html", {"request": request})
+
 
 @app.middleware("http")
 async def logging_middleware(request: Request, call_next):
@@ -55,14 +66,15 @@ async def logging_middleware(request: Request, call_next):
     path = request.url.path
     method = request.method
     client = request.client.host if request.client else "unknown"
-    
+
     logger.info(f"Request: {method} {path} - Client: {client}")
-    
+
     response = await call_next(request)
-    
+
     logger.info(f"Response: {method} {path} - Status: {response.status_code}")
-    
+
     return response
+
 
 @app.get("/uploads/{filename}")
 async def serve_file(filename: str):
@@ -72,7 +84,9 @@ async def serve_file(filename: str):
         return {"error": "File not found"}
     return FileResponse(file_path)
 
+
 if __name__ == "__main__":
     import uvicorn
+
     logger.info("Запуск приложения OCR Document Processor")
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True) 
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)

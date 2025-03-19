@@ -22,6 +22,7 @@ dependencies = [
     "svglib>=1.5.1",
     "tqdm>=4.67.1",
     "pandas>=2.2.0",
+    "ruff>=0.11.0",
 ]
 
 [tool.ruff]

@@ -1,2 +1,2 @@
 # OCR Document Processor
-# Версия: 0.1.0 
+# Версия: 0.1.0

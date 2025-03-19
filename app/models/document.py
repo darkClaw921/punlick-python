@@ -1,10 +1,11 @@
 from enum import Enum
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field
+from typing import List, Optional, Dict
+from pydantic import BaseModel
 
 
 class DocumentType(str, Enum):
     """Типы поддерживаемых документов"""
+
     PDF = "pdf"
     XLSX = "xlsx"
     IMAGE = "image"
@@ -14,11 +15,13 @@ class DocumentType(str, Enum):
 
 class DocumentItem(BaseModel):
     """Модель для элемента документа (страницы)"""
+
     text: str
-    
+
 
 class DocumentUpload(BaseModel):
     """Модель для загрузки документа"""
+
     filename: str
     file_type: DocumentType
     file_size: int
@@ -26,26 +29,30 @@ class DocumentUpload(BaseModel):
 
 class DocumentResponse(BaseModel):
     """Модель ответа с результатами обработки документа"""
+
     id: str
     original_filename: str
     items: List[DocumentItem]
     status: str = "completed"
     error: Optional[str] = None
-    
+
 
 class ExportRequest(BaseModel):
     """Запрос на экспорт результатов в XLSX"""
+
     document_id: str
 
 
 class ExportResponse(BaseModel):
     """Модель ответа с информацией об экспорте"""
+
     export_filename: str
     download_url: str
 
 
 class PriceListItem(BaseModel):
     """Модель для товара из прайс-листа"""
+
     article: str
     name: str
     price: float
@@ -54,11 +61,13 @@ class PriceListItem(BaseModel):
 
 class PriceListCategory(BaseModel):
     """Модель для категории товаров в прайс-листе"""
+
     items: List[PriceListItem]
 
 
 class PriceListUpload(BaseModel):
     """Модель для загрузки прайс-листа"""
+
     price_list_date: str
     currency: str
     categories: Dict[str, Dict[str, List[PriceListItem]]]
@@ -66,6 +75,7 @@ class PriceListUpload(BaseModel):
 
 class PriceListResponse(BaseModel):
     """Модель ответа с информацией о загруженном прайс-листе"""
+
     id: str
     filename: str
     date: str
@@ -78,5 +88,6 @@ class PriceListResponse(BaseModel):
 
 class PriceListSearchQuery(BaseModel):
     """Модель для поиска товаров в прайс-листе"""
+
     query: str
-    limit: int = 10 
+    limit: int = 10
