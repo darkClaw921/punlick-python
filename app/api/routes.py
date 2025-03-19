@@ -15,7 +15,8 @@ from app.models.document import DocumentResponse, ExportResponse, DocumentType, 
 from app.services.ocr_service import ocr_service
 from app.services.chat_service import chat_service
 from app.services.export_service import export_service
-from app.services.price_list_service import price_list_service
+from app.services.xlsx_service import xlsx_service
+#from app.services.price_list_service import price_list_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -49,6 +50,7 @@ async def upload_document(
     
     # Определяем тип файла на основе расширения и переданного параметра
     is_image = file_type == 'image' or file_ext in allowed_img_extensions
+    is_xlsx = file_ext == 'xlsx'
     
     # Проверяем поддержку типа файла
     if is_image and file_ext not in allowed_img_extensions:
@@ -77,8 +79,12 @@ async def upload_document(
             # Обработка изображения
             result = await ocr_service.process_image(file_path, file.filename)
             logger.info(f"Обработка изображения {file.filename} запущена")
+        elif is_xlsx:
+            # Обработка XLSX файла
+            result = await xlsx_service.process_xlsx_file(file_path, file.filename)
+            logger.info(f"Обработка XLSX файла {file.filename} запущена")
         else:
-            # Обработка документа
+            # Обработка PDF документа
             result = await ocr_service.process_document(file_path, file.filename)
         
         processing_time = time.time() - start_time
@@ -98,7 +104,13 @@ async def upload_document(
 async def get_document(document_id: str):
     """Получение результатов обработки документа по ID"""
     
+    # Проверяем сначала в ocr_service
     result = ocr_service.get_result(document_id)
+    
+    # Если не найдено в ocr_service, проверяем в xlsx_service
+    if not result and document_id.startswith("xlsx_"):
+        result = xlsx_service.get_result(document_id)
+    
     if not result:
         logger.warning(f"Попытка получения несуществующего документа с ID {document_id}")
         raise HTTPException(
@@ -113,8 +125,13 @@ async def get_document(document_id: str):
 async def export_document(document_id: str):
     """Экспорт результатов обработки в XLSX"""
     
-    # Получаем результат обработки
+    # Получаем результат обработки сначала из ocr_service
     result = ocr_service.get_result(document_id)
+    
+    # Если не найдено в ocr_service, проверяем в xlsx_service
+    if not result and document_id.startswith("xlsx_"):
+        result = xlsx_service.get_result(document_id)
+    
     if not result:
         logger.warning(f"Попытка экспорта несуществующего документа с ID {document_id}")
         raise HTTPException(
