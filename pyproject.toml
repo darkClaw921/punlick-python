@@ -1,0 +1,30 @@
+[project]
+name = "ocr-document-processor"
+version = "0.1.0"
+description = "Веб-приложение для обработки документов через OCR Mistral"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.103.1",
+    "uvicorn>=0.23.2",
+    "python-multipart>=0.0.6",
+    "jinja2>=3.1.2",
+    "aiofiles>=23.1.0",
+    "openpyxl>=3.1.2",
+    "httpx>=0.25.0",
+    "python-dotenv>=1.0.0",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.8.1",
+    "loguru>=0.7.3",
+    "mistralai>=1.5.1",
+    "pymupdf>=1.25.4",
+    "pillow>=11.1.0",
+    "cairosvg>=2.7.1",
+    "svglib>=1.5.1",
+    "tqdm>=4.67.1",
+    "pandas>=2.2.0",
+    "ruff>=0.11.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312" 

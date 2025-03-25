@@ -1,0 +1,16 @@
+*.log
+*.env
+.venv/
+.cursor/
+uploads/*
+exports/*
+*.csv
+# *.json
+*.xlsx
+*.xls
+*.docx
+*.doc
+.ruff_cache/
+__pycache__/
+vectordb/*
+*chroma.sqlite3*
