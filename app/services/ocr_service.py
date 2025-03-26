@@ -13,6 +13,7 @@ from app.models.document import DocumentResponse, DocumentItem, DocumentType
 # from ..core.config import settings
 # from ..models.document import DocumentResponse, DocumentItem
 from tqdm import tqdm
+import aiohttp
 
 logger.add(
     "ocr_service.log",
@@ -28,6 +29,7 @@ class OCRService:
     def __init__(self):
         self._client = Mistral(
             api_key=settings.MISTRAL_API_KEY, timeout_ms=300000
+            
         )  # 5 минут
         self._results = {}  # Временное хранилище результатов
 
@@ -43,7 +45,7 @@ class OCRService:
             print(f"Error: {e}")
             return None
 
-    def send_mistral_document_batch(self, pages):
+    async def send_mistral_document_batch(self, pages):
         all_text = []
         count_pages = 0
         for page in tqdm(
@@ -66,8 +68,8 @@ class OCRService:
             ]
             # logger.debug(f"Сообщения для API: {messages}")
             # Get the chat response
-            chat_response = self._client.chat.complete(
-                model="mistral-large-latest", messages=messages
+            chat_response = await self._client.chat.complete_async(
+                model="mistral-large-latest", messages=messages, max_tokens=40000
             )
 
             # Print the content of the response
@@ -130,7 +132,7 @@ class OCRService:
 
         # Иначе обрабатываем как документ
         # Загрузка файла в Mistral
-        uploaded_file = self._client.files.upload(
+        uploaded_file = await self._client.files.upload_async(
             file={
                 "file_name": original_filename,
                 "content": open(file_path, "rb"),
@@ -139,12 +141,12 @@ class OCRService:
         )
         logger.debug(f"Загруженный файл: {uploaded_file}")
         # Получение подписанного URL для доступа к файлу
-        signed_url = self._client.files.get_signed_url(
+        signed_url = await self._client.files.get_signed_url_async(
             file_id=uploaded_file.id
         )
         logger.debug(f"Подписанный URL: {signed_url}")
         # Обработка документа через OCR
-        ocr_response = self._client.ocr.process(
+        ocr_response = await self._client.ocr.process_async(
             model="mistral-ocr-latest",
             document={
                 "type": "document_url",
@@ -155,7 +157,7 @@ class OCRService:
 
         logger.debug(f"Обработанный документ: {ocr_response}")
 
-        all_texts = self.send_mistral_document_batch(ocr_response.pages)
+        all_texts = await self.send_mistral_document_batch(ocr_response.pages)
         products = all_texts
         # for text in all_texts:
         #     try:
@@ -195,15 +197,15 @@ class OCRService:
     ) -> DocumentResponse:
         """Обработка изображения с использованием Mistral API"""
         try:
-            uploaded_pdf = self._client.files.upload(
+            uploaded_pdf = await self._client.files.upload_async(
                 file={
                     "file_name": original_filename,
                     "content": open(file_path, "rb"),
                 },
                 purpose="ocr",
             )
-            self._client.files.retrieve(file_id=uploaded_pdf.id)
-            signed_url = self._client.files.get_signed_url(
+            await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
+            signed_url = await self._client.files.get_signed_url_async(
                 file_id=uploaded_pdf.id
             )
             promt = open(
@@ -223,7 +225,7 @@ class OCRService:
             ]
 
             # Get the chat response
-            chat_response = self._client.chat.complete(
+            chat_response = await self._client.chat.complete_async(
                 model="pixtral-12b-2409", messages=messages
             )
 
@@ -249,7 +251,7 @@ class OCRService:
             ]
 
             # Get the chat response
-            chat_response = self._client.chat.complete(
+            chat_response = await self._client.chat.complete_async(
                 model="mistral-large-latest",
                 messages=messages,
                 max_tokens=50000,

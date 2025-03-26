@@ -14,7 +14,7 @@ from tqdm import tqdm
 import os
 from mistralai import Mistral
 from datetime import datetime
-
+from pprint import pprint
 from app.core.config import settings
 from app.models.document import PriceListResponse
 

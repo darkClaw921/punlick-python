@@ -1079,7 +1079,7 @@ class PriceListService:
             for idx, item in enumerate(items):
                 # Получаем название товара
                 print(item)
-                
+
                 item_name = item.get("Наименование", "")
                 # item_name = item.text
                     
@@ -1091,14 +1091,15 @@ class PriceListService:
                     # Ищем похожие товары в векторной базе
                     promt = chromaDB.get_items(item_name, isReturnPromt=True)
 
-                    response = self.mistral_client.chat.complete(
+                    response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
                             {"role": "system", "content": f"вот правила для правильного наименования{promt}"},
                             {"role": "user", "content": f"верни правильное наименование для: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
-                        ]
+                        ],
+                        max_tokens=40000
                     )
                     # pprint(response)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
@@ -1113,14 +1114,15 @@ class PriceListService:
                     allTexts = [match["description"] for match in matches]
                     
                     allTexts = '\n'.join(allTexts)
-                    response = self.mistral_client.chat.complete(
+                    response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
                             {"role": "system", "content": f"вот список товаров из базы данных {allTexts}"},
                             {"role": "user", "content": f"верни то что больше соответствует: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
-                        ]
+                        ],
+                        max_tokens=40000
                     )
                     # print("===================\n", allTexts)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)

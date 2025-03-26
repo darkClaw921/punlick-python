@@ -4,9 +4,11 @@ import pandas as pd
 from typing import Optional
 from loguru import logger
 from mistralai import Mistral
+from tqdm import tqdm
 
 from app.core.config import settings
 from app.models.document import DocumentResponse, DocumentItem
+from app.services.price_list_service import PriceListService
 
 logger.add(
     "xlsx_service.log",
@@ -70,46 +72,74 @@ class XLSXService:
             except Exception as e:
                 logger.error(f"Ошибка при чтении XLSX файла: {str(e)}")
                 raise ValueError(f"Не удалось прочитать XLSX файл: {str(e)}")
+            logger.debug(f"Содержимое XLSX файла: {xlsx_content}")
 
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": """найди все товары и верни их в виде списка в формате json "Наименование","Количество","Ед.изм." """,
-                        },
-                        {"type": "text", "text": xlsx_content},
-                    ],
-                }
-            ]
+            # Разбиваем содержимое на батчи по 50 строк
+            lines = xlsx_content.split('\n')
+            batch_size = 50
+            batches = ['\n'.join(lines[i:i+batch_size]) for i in range(0, len(lines), batch_size)]
+            logger.debug(f"Файл разбит на {len(batches)} батчей по {batch_size} строк")
+            
 
-            # Получаем ответ от API
-            chat_response = self._client.chat.complete(
-                model="mistral-large-latest", messages=messages
-            )
-
-            # Получаем содержимое ответа
-            text = chat_response.choices[0].message.content
-            logger.debug(f"Полученный ответ от API: {text}")
-
-            try:
-                # Пытаемся распарсить JSON
-                products = self.prepare_text_anserw_to_dict(text)
-                if not products:
-                    # Если не удалось распарсить JSON или результат пустой, создаем пустой список
-                    products = []
-            except Exception as e:
-                logger.warning(
-                    f"Не удалось распарсить JSON: {str(e)}, возвращаем текст как есть"
-                )
-                # Создаем простой формат для отображения
-                products = [
-                    {"Наименование": text, "Количество": "", "Ед.изм.": ""}
+            all_products = []
+            for batch in tqdm(batches, desc="Обработка батчей XLSX"):
+                
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": """найди все товары и верни их в виде списка в формате json с полями "Наименование","Количество","Ед.изм." """,
+                            },
+                            {"type": "text", "text": batch},
+                        ],
+                    }
                 ]
+
+                # Получаем ответ от API
+                chat_response = await self._client.chat.complete_async(
+                    model="mistral-large-latest", messages=messages, max_tokens=40000
+                )
+
+                # Получаем содержимое ответа
+                text = chat_response.choices[0].message.content
+                logger.debug(f"Полученный ответ от API: {text}")
+
+                try:
+                    # Пытаемся распарсить JSON
+                    products = self.prepare_text_anserw_to_dict(text)
+                    if not products:
+                        # Если не удалось распарсить JSON или результат пустой, создаем пустой список
+                        products = []
+                except Exception as e:
+                    logger.warning(
+                        f"Не удалось распарсить JSON: {str(e)}, возвращаем текст как есть"
+                    )
+                    # Создаем простой формат для отображения
+                    products = [
+                        {"Наименование": text, "Количество": "", "Ед.изм.": ""}
+                    ]
+
+                all_products.extend(products)
 
             # Создаем уникальный ID для файла
             file_id = f"xlsx_{original_filename}"
+
+            # document_response = DocumentResponse(
+            #     id=file_id,
+            #     original_filename=original_filename,
+            #     items=[
+            #         DocumentItem(
+            #             text=item
+            #             if isinstance(item, str)
+            #             else json.dumps(item, ensure_ascii=False)
+            #         )
+            #         for item in all_products
+            #     ],
+            # )
+            price_list_service = PriceListService()
+            enriched_products = await price_list_service.find_matching_items(all_products)
 
             document_response = DocumentResponse(
                 id=file_id,
@@ -120,7 +150,7 @@ class XLSXService:
                         if isinstance(item, str)
                         else json.dumps(item, ensure_ascii=False)
                     )
-                    for item in products
+                    for item in enriched_products
                 ],
             )
 
@@ -128,6 +158,10 @@ class XLSXService:
             self._results[file_id] = document_response
 
             return document_response
+            # Сохранение результата
+            # self._results[file_id] = document_response
+
+            # return document_response
 
         except Exception as e:
             logger.error(
