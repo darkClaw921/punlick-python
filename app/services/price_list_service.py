@@ -1090,7 +1090,7 @@ class PriceListService:
                     # item_name = item_name.replace("Ф", "d")
                     # Ищем похожие товары в векторной базе
                     promt = chromaDB.get_items(item_name, isReturnPromt=True)
-
+                    logger.info(f"вот правила для правильного наименования: {promt[:50]} ...")
                     response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
@@ -1099,7 +1099,8 @@ class PriceListService:
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
                         ],
-                        max_tokens=40000
+                        max_tokens=40000,
+                        temperature=0.9
                     )
                     # pprint(response)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)

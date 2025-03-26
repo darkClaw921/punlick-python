@@ -1090,7 +1090,7 @@ class PriceListService:
                     # item_name = item_name.replace("Ф", "d")
                     # Ищем похожие товары в векторной базе
                     promt = chromaDB.get_items(item_name, isReturnPromt=True)
-
+                    logger.info(f"вот правила для правильного наименования: {promt[:50]} ...")
                     response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
