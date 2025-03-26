@@ -17,7 +17,6 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.models.document import PriceListResponse
-from price_validator_service import PriceValidatorService
 
 
 class PriceListService:
@@ -1127,7 +1126,8 @@ class PriceListService:
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
                         ],
-                        max_tokens=40000
+                        max_tokens=40000,
+                        temperature=0.9
                     )
                     # print("===================\n", allTexts)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
@@ -1154,29 +1154,27 @@ if __name__ == "__main__":
     from pprint import pprint
     # price_list_service = PriceListService()
     # asyncio.run(price_list_service.update_price_list_collection(file_path="/Users/igorgerasimov/Downloads/наш прайс воздуховодов2.xlsx", 
-     
                                                                 # original_filename="наш прайс воздуховодов2.xlsx", ))
-    # 
     items = [
-  
+   
     {
         "Наименование": "Врезка Φ125/Φ200",
         "Количество": "1",
         "Ед.изм.": "шт"
     },
-   
+    
     {
         "Наименование": "Переход Φ315/Φ250",
         "Количество": "1 шт",
         "Ед.изм.": "шт"
     },
-    
+   
     {
         "Наименование": "Узел прохода УП-1 (без клапана) d 125 -1250",
         "Количество": "1 шт",
         "Ед.изм.": "шт"
     },
-   
+    
 ]
     price_list_service = PriceListService()
     finds = asyncio.run(price_list_service.find_matching_items(items))
