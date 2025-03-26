@@ -935,7 +935,7 @@ class PriceListService:
             )
             raise Exception(f"Ошибка при загрузке данных в ChromaDB: {str(e)}")
 
-    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
+    async def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
         Получение эмбеддингов для текстов с использованием Mistral API
         
@@ -956,7 +956,7 @@ class PriceListService:
             for i in tqdm(range(0, len(texts), batch_size), desc="Получение эмбеддингов"):
                 batch_texts = texts[i:i+batch_size]
                 try:
-                    response = self.mistral_client.embeddings.create(
+                    response = self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=batch_texts
                     )

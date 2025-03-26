@@ -250,7 +250,7 @@ class PriceListService:
             self.logger.error(f"Ошибка при чтении JSON файла: {str(e)}")
             raise Exception(f"Ошибка при чтении JSON файла: {str(e)}")
 
-    def _read_excel_price_list(self, file_path: str) -> Dict[str, Any]:
+    async def _read_excel_price_list(self, file_path: str) -> Dict[str, Any]:
         """
         Чтение прайс-листа из Excel файла, пропуская первые 5 строк заголовка
         Специально для формата прайс-листа с воздуховодами и объединенными ячейками
@@ -731,7 +731,7 @@ class PriceListService:
             elif file_path.endswith(".json"):
                 data = self._read_json_price_list(file_path)
             elif file_path.endswith(".xlsx") or file_path.endswith(".xls"):
-                data = self._read_excel_price_list(file_path)
+                data = await self._read_excel_price_list(file_path)
             else:
                 raise ValueError(f"Неподдерживаемый формат файла: {file_path}")
             
@@ -753,7 +753,7 @@ class PriceListService:
             data["supplier_id"] = supplier_id
             
             # Загружаем данные в ChromaDB с учетом поставщика и обновлением статуса
-            total_items = self._load_data_to_chroma_with_supplier(data, price_list_id, supplier_id, price_list_id)
+            total_items = await self._load_data_to_chroma_with_supplier(data, price_list_id, supplier_id, price_list_id)
 
             # Подсчитываем количество категорий и подкатегорий
             categories_count = 0
@@ -808,7 +808,7 @@ class PriceListService:
             )
             raise Exception(f"Ошибка при обновлении коллекции: {str(e)}")
             
-    def _load_data_to_chroma_with_supplier(
+    async def _load_data_to_chroma_with_supplier(
         self, data: Dict[str, Any], price_list_id: str, supplier_id: str, upload_id: str = None
     ) -> int:
         """
@@ -875,7 +875,7 @@ class PriceListService:
                         total_items=total_items,
                         current_stage="Получение эмбеддингов через Mistral API"
                     )
-                embeddings = self._get_embeddings(documents)
+                embeddings = await self._get_embeddings(documents)
 
             # Загружаем данные пакетами по 1000 записей для экономии памяти
             batch_size = 1000
@@ -964,7 +964,7 @@ class PriceListService:
             print(f"Ошибка извлечения списка: {str(e)}")
             return None
         
-    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
+    async def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
         Получение эмбеддингов для текстов с использованием Mistral API
         
@@ -985,7 +985,7 @@ class PriceListService:
             for i in tqdm(range(0, len(texts), batch_size), desc="Получение эмбеддингов"):
                 batch_texts = texts[i:i+batch_size]
                 try:
-                    response = self.mistral_client.embeddings.create(
+                    response = await self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=batch_texts
                     )
