@@ -1154,7 +1154,11 @@ if __name__ == "__main__":
     from pprint import pprint
     # price_list_service = PriceListService()
     # asyncio.run(price_list_service.update_price_list_collection(file_path="/Users/igorgerasimov/Downloads/наш прайс воздуховодов2.xlsx", 
-                                                                # original_filename="наш прайс воздуховодов2.xlsx", ))
+    # asyncio.run(price_list_service.update_price_list_collection(file_path="наш прайс воздуховодов.xlsx", 
+                                                                # original_filename="наш прайс воздуховодов.xlsx", ))
+
+    # 1/0
+
     items = [
    
     {

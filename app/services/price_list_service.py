@@ -1122,7 +1122,7 @@ class PriceListService:
                         model="mistral-small-latest",
                         messages=[
                             {"role": "system", "content": f"вот список товаров из базы данных {allTexts}"},
-                            {"role": "user", "content": f"верни то что больше соответствует: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
+                            {"role": "user", "content": f"верни то что больше соответствует: {answerName} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
                         ],
@@ -1131,7 +1131,7 @@ class PriceListService:
                     )
                     # print("===================\n", allTexts)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("более подходящий товар: для ", item_name, answer)
+                    print("более подходящий товар: для ", answerName, answer)
 
                     enriched_items.append(answer[0])
                     
