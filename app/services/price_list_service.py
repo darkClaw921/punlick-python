@@ -1103,17 +1103,21 @@ class PriceListService:
                     )
                     # pprint(response)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("===================", answer)
+                    print("Правильное наименование: ", answer)
 
+                    try:
+                        answerName = answer[0]["Наименование"]
+                    except:
+                        continue
 
-                    answerName = answer[0]["Наименование"]
                     matches = await self.search_similar_items(query=answerName, limit=5)
-                    
+                        
 
                     # pprint(matches)
                     allTexts = [match["description"] for match in matches]
                     
                     allTexts = '\n'.join(allTexts)
+                    print("Список похожих товаров из базы данных: ", allTexts)
                     response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
@@ -1126,7 +1130,7 @@ class PriceListService:
                     )
                     # print("===================\n", allTexts)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("===================\n", answer)
+                    print("более подходящий товар: для ", item_name, answer)
 
                     enriched_items.append(answer[0])
                     
