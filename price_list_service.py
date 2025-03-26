@@ -1,7 +1,7 @@
 """Сервис для работы с прайс-листами и векторной базой данных ChromaDB"""
 import re
-from price_validator_service import PriceValidatorService
-
+# from price_validator_service import PriceValidatorService
+from pprint import pprint
 import json
 import traceback
 import uuid
@@ -14,9 +14,10 @@ from tqdm import tqdm
 import os
 from mistralai import Mistral
 from datetime import datetime
-from pprint import pprint
+
 from app.core.config import settings
 from app.models.document import PriceListResponse
+from price_validator_service import PriceValidatorService
 
 
 class PriceListService:
@@ -250,7 +251,7 @@ class PriceListService:
             self.logger.error(f"Ошибка при чтении JSON файла: {str(e)}")
             raise Exception(f"Ошибка при чтении JSON файла: {str(e)}")
 
-    def _read_excel_price_list(self, file_path: str) -> Dict[str, Any]:
+    async def _read_excel_price_list(self, file_path: str) -> Dict[str, Any]:
         """
         Чтение прайс-листа из Excel файла, пропуская первые 5 строк заголовка
         Специально для формата прайс-листа с воздуховодами и объединенными ячейками
@@ -543,7 +544,7 @@ class PriceListService:
             if self.mistral_client:
                 try:
                     self.logger.info(f"Получение эмбеддинга для поискового запроса: '{query}'")
-                    embeddings_response = self.mistral_client.embeddings.create(
+                    embeddings_response = await self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=[query]
                     )
@@ -731,7 +732,7 @@ class PriceListService:
             elif file_path.endswith(".json"):
                 data = self._read_json_price_list(file_path)
             elif file_path.endswith(".xlsx") or file_path.endswith(".xls"):
-                data = self._read_excel_price_list(file_path)
+                data = await self._read_excel_price_list(file_path)
             else:
                 raise ValueError(f"Неподдерживаемый формат файла: {file_path}")
             
@@ -753,7 +754,7 @@ class PriceListService:
             data["supplier_id"] = supplier_id
             
             # Загружаем данные в ChromaDB с учетом поставщика и обновлением статуса
-            total_items = self._load_data_to_chroma_with_supplier(data, price_list_id, supplier_id, price_list_id)
+            total_items = await self._load_data_to_chroma_with_supplier(data, price_list_id, supplier_id, price_list_id)
 
             # Подсчитываем количество категорий и подкатегорий
             categories_count = 0
@@ -808,7 +809,7 @@ class PriceListService:
             )
             raise Exception(f"Ошибка при обновлении коллекции: {str(e)}")
             
-    def _load_data_to_chroma_with_supplier(
+    async def _load_data_to_chroma_with_supplier(
         self, data: Dict[str, Any], price_list_id: str, supplier_id: str, upload_id: str = None
     ) -> int:
         """
@@ -875,7 +876,7 @@ class PriceListService:
                         total_items=total_items,
                         current_stage="Получение эмбеддингов через Mistral API"
                     )
-                embeddings = self._get_embeddings(documents)
+                embeddings = await self._get_embeddings(documents)
 
             # Загружаем данные пакетами по 1000 записей для экономии памяти
             batch_size = 1000
@@ -964,7 +965,7 @@ class PriceListService:
             print(f"Ошибка извлечения списка: {str(e)}")
             return None
         
-    def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
+    async def _get_embeddings(self, texts: List[str]) -> List[List[float]]:
         """
         Получение эмбеддингов для текстов с использованием Mistral API
         
@@ -985,7 +986,7 @@ class PriceListService:
             for i in tqdm(range(0, len(texts), batch_size), desc="Получение эмбеддингов"):
                 batch_texts = texts[i:i+batch_size]
                 try:
-                    response = self.mistral_client.embeddings.create(
+                    response = await self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=batch_texts
                     )
@@ -1054,72 +1055,7 @@ class PriceListService:
             "updated_at": datetime.now().isoformat()
         }
 
-    def calculate_similarity_score(self, item_name: str, reference_name: str) -> float:
-        """
-        Расчет процента сходства между распознанным и эталонным названием товара
-        
-        Args:
-            item_name: Распознанное название товара
-            reference_name: Эталонное название товара
-            
-        Returns:
-            float: Процент сходства (0.0-1.0)
-        """
-        try:
-            # Приводим к нижнему регистру и удаляем лишние пробелы
-            item_name = item_name.lower().strip()
-            reference_name = reference_name.lower().strip()
-            
-            # Если названия полностью совпадают
-            if item_name == reference_name:
-                self.logger.debug(f"Полное совпадение: '{item_name}' == '{reference_name}'")
-                return 1.0
-            
-            # Для более сложного анализа можно использовать различные алгоритмы:
-            
-            # 1. Расстояние Левенштейна (редакционное расстояние)
-            # Вычисляет минимальное количество операций замены, вставки и удаления
-            # для преобразования одной строки в другую
-            from difflib import SequenceMatcher
-            
-            # Используем SequenceMatcher для определения сходства строк
-            matcher = SequenceMatcher(None, item_name, reference_name)
-            ratio = matcher.ratio()
-            
-            # 2. Поиск общих слов (опционально)
-            # Проверяем, сколько слов из эталонного названия содержится в распознанном
-            item_words = set(item_name.split())
-            ref_words = set(reference_name.split())
-            common_words = item_words.intersection(ref_words)
-            
-            # Если есть общие слова, увеличиваем оценку сходства
-            word_ratio = len(common_words) / max(len(ref_words), 1) if ref_words else 0
-            
-            # Подробное логирование
-            self.logger.debug(
-                f"Расчет сходства: '{item_name}' <=> '{reference_name}' | "
-                f"Левенштейн: {ratio:.2f} | "
-                f"Общие слова: {len(common_words)}/{len(ref_words)} = {word_ratio:.2f} | "
-                f"Общие слова: {common_words if common_words else '-'}"
-            )
-            
-            # Комбинированная оценка (можно настроить веса)
-            # Можно изменить веса для тонкой настройки алгоритма
-            similarity = 0.7 * ratio + 0.3 * word_ratio
-            
-            # Округляем для лучшей читаемости логов
-            similarity = round(similarity, 4)
-            
-            self.logger.debug(
-                f"Итоговый показатель сходства: {similarity:.4f} "
-                f"(0.7 * {ratio:.2f} + 0.3 * {word_ratio:.2f})"
-            )
-            
-            return similarity
-        
-        except Exception as e:
-            self.logger.error(f"Ошибка при вычислении сходства: {str(e)}")
-            return 0.0
+
 
     @logger.catch
     async def find_matching_items(self, items: List[Dict[str, Any]], similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
@@ -1143,7 +1079,10 @@ class PriceListService:
             
             for idx, item in enumerate(items):
                 # Получаем название товара
+                print(item)
+
                 item_name = item.get("Наименование", "")
+                # item_name = item.text
                     
                 # Если имя товара не пустое, ищем совпадения в базе
                 if item_name:
@@ -1153,44 +1092,51 @@ class PriceListService:
                     # Ищем похожие товары в векторной базе
                     promt = chromaDB.get_items(item_name, isReturnPromt=True)
 
-                    response = self.mistral_client.chat.complete(
+                    response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=[
                             {"role": "system", "content": f"вот правила для правильного наименования{promt}"},
                             {"role": "user", "content": f"верни правильное наименование для: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
-                        ]
+                        ],
+                        max_tokens=40000
                     )
-                    pprint(response)
+                    # pprint(response)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("===================", answer)
+                    print("Правильное наименование: ", answer)
 
+                    try:
+                        answerName = answer[0]["Наименование"]
+                    except:
+                        continue
 
-                    answerName = answer[0]["Наименование"]
                     matches = await self.search_similar_items(query=answerName, limit=5)
-                    
+                        
 
                     # pprint(matches)
                     allTexts = [match["description"] for match in matches]
                     
                     allTexts = '\n'.join(allTexts)
-                    print("===================\n", allTexts)
+                    print("Список похожих товаров из базы данных: ", allTexts)
+                    response = await self.mistral_client.chat.complete_async(
+                        model="mistral-small-latest",
+                        messages=[
+                            {"role": "system", "content": f"вот список товаров из базы данных {allTexts}"},
+                            {"role": "user", "content": f"верни то что больше соответствует: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
+                            # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
+                            # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
+                        ],
+                        max_tokens=40000
+                    )
+                    # print("===================\n", allTexts)
+                    answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
+                    print("более подходящий товар: для ", item_name, answer)
+
+                    enriched_items.append(answer[0])
                     
-                    #TODO: востановить потом 
-                    
-                else:
-                    self.logger.info(f"[Товар {idx+1}] Пустое название товара, пропускаем поиск")
-                
-                # Если не нашли совпадений или имя пустое, добавляем оригинальный элемент
-                # enriched_items.append(item)
             
-            # Подводим итоги поиска
-            matched_count = sum(1 for item in enriched_items if item.get("matched", False))
-            self.logger.info(
-                f"Завершен поиск соответствий: найдено {matched_count} из {len(items)} товаров "
-                f"с порогом сходства {similarity_threshold:.2f} ({int(similarity_threshold * 100)}%)"
-            )
+            
             pprint(enriched_items)
             return enriched_items
             
@@ -1201,128 +1147,44 @@ class PriceListService:
             return items
 
 # Экземпляр сервиса
-# price_list_service = PriceListService()
+price_list_service = PriceListService()
 #uv run app:/services/price_list_service.py 
 if __name__ == "__main__":
     import asyncio
     from pprint import pprint
     # price_list_service = PriceListService()
     # asyncio.run(price_list_service.update_price_list_collection(file_path="/Users/igorgerasimov/Downloads/наш прайс воздуховодов2.xlsx", 
+     
                                                                 # original_filename="наш прайс воздуховодов2.xlsx", ))
+    # 
     items = [
-    # {
-    #     "Наименование": "Отвертка Φ100",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
+  
     {
         "Наименование": "Врезка Φ125/Φ200",
         "Количество": "1",
         "Ед.изм.": "шт"
     },
-    # {
-    #     "Наименование": "Отвертка Φ160",
-    #     "Количество": "4 шт",
-    #     "Ед.изм.": "шт"
-    # },
+   
     {
         "Наименование": "Переход Φ315/Φ250",
         "Количество": "1 шт",
         "Ед.изм.": "шт"
     },
-    # {
-    #     "Наименование": "Отвертка Φ250",
-    #     "Количество": "2 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Дроссель Φ160",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Отвертка Φ200",
-    #     "Количество": "3 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Воздуховод 450*350",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Воздуховод Φ250",
-    #     "Количество": "4 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Воздуховод Φ200",
-    #     "Количество": "4 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Воздуховод Φ160",
-    #     "Количество": "2 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Отвертка 45° Φ250",
-    #     "Количество": "6 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Заглушка Φ200",
-    #     "Количество": "2 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Заглушка Φ250",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Врезка Φ200/Φ200",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Дроссель Φ125",
-    #     "Количество": "3 шт",
-    #     "Ед.изм.": "шт"
-    # },
+    
     {
-        "Наименование": "Врезка Φ125/Φ160",
+        "Наименование": "Узел прохода УП-1 (без клапана) d 125 -1250",
         "Количество": "1 шт",
         "Ед.изм.": "шт"
     },
-    # {
-    #     "Наименование": "Отвертка 45° Φ100",
-    #     "Количество": "2 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Переход Φ125/Φ160",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Где просто отвертка - 3то 90°",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # },
-    # {
-    #     "Наименование": "Один ТАКОЙ переход",
-    #     "Количество": "1 шт",
-    #     "Ед.изм.": "шт"
-    # }
+   
 ]
     price_list_service = PriceListService()
     finds = asyncio.run(price_list_service.find_matching_items(items))
-    # pprint(finds)
+    pprint(finds)
     
-    validator = PriceValidatorService()
-    validated = asyncio.run(validator.validate_and_correct_items(finds))
-    pprint(validated)
+    # validator = PriceValidatorService()
+    # validated = asyncio.run(validator.validate_and_correct_items(finds))
+    # pprint(validated)
 
     #заполнение базы данных
                                                             #  original_filename="наш прайс воздуховодов2.xlsx", 

@@ -543,7 +543,7 @@ class PriceListService:
             if self.mistral_client:
                 try:
                     self.logger.info(f"Получение эмбеддинга для поискового запроса: '{query}'")
-                    embeddings_response = self.mistral_client.embeddings.create(
+                    embeddings_response = await self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=[query]
                     )
