@@ -23,4 +23,18 @@ class RuleBlockUpdateRequest(BaseModel):
 class RuleTypeResponse(BaseModel):
     """Модель для типа правил"""
     id: str
-    name: str 
+    name: str
+
+
+class NewRuleBlockRequest(BaseModel):
+    """Модель запроса на создание нового блока правил"""
+    file_type: str
+    title: str
+    content: str
+
+
+class NewRuleFileRequest(BaseModel):
+    """Модель запроса на создание нового файла правил"""
+    file_type: str
+    file_name: str
+    display_name: str 

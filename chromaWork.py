@@ -1,3 +1,4 @@
+import asyncio
 import os
 from pprint import pprint
 import uuid
@@ -90,7 +91,7 @@ class ChromaWork:
             raise Exception(f"Не удалось инициализировать ChromaDB: {str(e)}")
         
     @logger.catch
-    def add_items(self,text:str, separator:str="=========="):
+    async def add_items(self,text:str, separator:str="=========="):
         items = text.split(separator)
         print(len(items))   
         
@@ -100,7 +101,7 @@ class ChromaWork:
             if not item.strip():  # Пропускаем пустые строки
                 continue
             theme = item.split("===")[1]
-            embeddings_response = self.mistral_client.embeddings.create(
+            embeddings_response = await self.mistral_client.embeddings.create_async(
                         model="mistral-embed",
                         inputs=[theme.strip()]
                     )
@@ -141,14 +142,19 @@ class ChromaWork:
                 n_results=n_results
             )
     def delete_collection(self):    
-        self.logger.info(f"Удаление коллекции {self.CHROMA_COLLECTION_NAME}")
-        self.client.delete_collection(self.CHROMA_COLLECTION_NAME)
+        self.logger.info(f"Удаление коллекции {self.CHROMA_COLLECTION_NAME}")        
+        self.client.delete_collection(name=self.CHROMA_COLLECTION_NAME)
+        a=self.client.list_collections()
+        print(a)
     
 if __name__ == "__main__":
     
     chromaWork = ChromaWork('test')
-    
-    chromaWork.add_items(open("новые правила пряямоугольных.txt", "r").read())
-    chromaWork.add_items(open("новые правила КРуглых.txt", "r").read())
-    pprint(chromaWork.get_items("врезка φ125/φ160", isReturnPromt=True))
+    chromaWork.delete_collection()
+    chromaWork = ChromaWork('test') 
+    asyncio.run(chromaWork.add_items(open("rules/новые правила пряямоугольных.txt", "r").read()))
+    # chromaWork.add_items(open("rules/новые правила КРуглых.txt", "r").read())
     # chromaWork.delete_collection()
+    # chromaWork.delete_collection()
+    # pprint(chromaWork.get_items("врезка φ125/φ160", isReturnPromt=True))
+    

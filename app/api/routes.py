@@ -11,26 +11,37 @@ from fastapi import (
     BackgroundTasks,
     Request,
 )
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 import time
 import uuid
 from pydantic import BaseModel
 import hashlib
+import glob
+import asyncio
 
 from app.core.config import settings
+# from app.core.logger import logger
 from app.models.document import (
     DocumentResponse,
     ExportResponse,
     PriceListResponse,
     PriceListSearchQuery,
 )
-from app.models.rules import RulesFileResponse, RuleBlockResponse, RuleBlockUpdateRequest, RuleTypeResponse
+from app.models.rules import (
+    RulesFileResponse,
+    RuleBlockResponse,
+    RuleBlockUpdateRequest,
+    RuleTypeResponse,
+    NewRuleBlockRequest,
+    NewRuleFileRequest
+)
 from app.services.ocr_service import ocr_service
 from app.services.chat_service import chat_service
 from app.services.export_service import export_service
 from app.services.xlsx_service import xlsx_service
 from app.services.price_list_service import price_list_service
 from app.services.rules_service import rules_service
+from chromaWork import ChromaWork
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -517,3 +528,267 @@ async def get_rules(file_type: str = "round"):
 async def get_default_rules():
     """Получение правил из файла по умолчанию (круглые)"""
     return await get_rules("round")
+
+
+@router.post("/rules/block", response_model=RuleBlockResponse)
+async def create_rule_block(rule_request: NewRuleBlockRequest):
+    """Создание нового блока правил"""
+    try:
+        new_block = rules_service.create_new_rule_block(
+            file_type=rule_request.file_type,
+            title=rule_request.title,
+            content=rule_request.content
+        )
+        
+        if not new_block:
+            raise HTTPException(
+                status_code=500,
+                detail="Не удалось создать новый блок правил"
+            )
+        
+        # Преобразуем модель RuleBlock в RuleBlockResponse
+        return RuleBlockResponse(
+            id=new_block.id,
+            title=new_block.title,
+            content=new_block.content
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Ошибка при создании нового блока правил: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при создании нового блока правил: {str(e)}"
+        )
+
+
+@router.post("/rules/file", response_model=RuleTypeResponse)
+async def create_rules_file(file_request: NewRuleFileRequest):
+    """Создание нового файла правил"""
+    try:
+        success = rules_service.create_new_rules_file(
+            file_type=file_request.file_type,
+            file_name=file_request.file_name
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=500,
+                detail="Не удалось создать новый файл правил"
+            )
+        
+        return RuleTypeResponse(
+            id=file_request.file_type,
+            name=file_request.display_name
+        )
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Ошибка при создании нового файла правил: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при создании нового файла правил: {str(e)}"
+        )
+
+
+@router.delete("/rules/block/{block_id}")
+async def delete_rule_block(block_id: str):
+    """Удаление блока правил"""
+    try:
+        success = rules_service.delete_rule_block(block_id)
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Блок правил с ID {block_id} не найден или не может быть удален"
+            )
+        
+        return {"success": True, "message": "Блок правил успешно удален"}
+    except Exception as e:
+        logger.error(f"Ошибка при удалении блока правил: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Ошибка при удалении блока правил: {str(e)}"
+        )
+
+
+@router.post("/rules/reload")
+async def reload_rules_files():
+    """Перезагрузка файлов правил из директории"""
+    try:
+        rules_service.load_rule_files()
+        return {"message": "Rules files reloaded successfully", "types": rules_service.get_available_rule_types()}
+    except Exception as e:
+        logger.error(f"Error reloading rules files: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reloading rules files: {str(e)}")
+
+
+@router.post("/chroma/reindex")
+async def reindex_chroma(background_tasks: BackgroundTasks):
+    try:
+        # Генерируем уникальный ID для задачи
+        reindex_id = str(uuid.uuid4())
+        
+        # Инициализируем статус индексации
+        _reindex_statuses = {}
+        if hasattr(price_list_service, '_upload_statuses'):
+            _reindex_statuses = price_list_service._upload_statuses
+        else:
+            price_list_service._upload_statuses = _reindex_statuses
+        
+        _reindex_statuses[reindex_id] = {
+            "status": "initiated",
+            "percent_complete": 0,
+            "processed_files": 0,
+            "total_files": 0,
+            "current_stage": "подготовка к индексации",
+            "start_time": time.time(),
+            "indexed_files": []
+        }
+        
+        # Запускаем фоновую задачу
+        background_tasks.add_task(
+            perform_chroma_reindex, 
+            reindex_id=reindex_id
+        )
+        
+        return {
+            "status": "started",
+            "reindex_id": reindex_id,
+            "message": "Переиндексация запущена. Используйте GET /api/chroma/reindex/{reindex_id}/status для отслеживания прогресса."
+        }
+    except Exception as e:
+        logger.error(f"Ошибка при запуске переиндексации: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Ошибка при запуске переиндексации: {str(e)}")
+
+@router.get("/chroma/reindex/{reindex_id}/status")
+async def get_reindex_status(reindex_id: str):
+    """Получение статуса переиндексации"""
+    try:
+        if not hasattr(price_list_service, '_upload_statuses'):
+            price_list_service._upload_statuses = {}
+            
+        _reindex_statuses = price_list_service._upload_statuses
+        status = _reindex_statuses.get(reindex_id)
+        
+        if not status:
+            raise HTTPException(
+                status_code=404, detail=f"Процесс переиндексации с ID {reindex_id} не найден"
+            )
+        
+        # Создаем копию статуса для безопасного изменения
+        status_copy = status.copy()
+        
+        # Добавляем информацию о времени выполнения
+        if 'start_time' in status_copy:
+            elapsed_time = time.time() - status_copy["start_time"]
+            status_copy["elapsed_time"] = f"{elapsed_time:.2f} сек."
+        
+        return status_copy
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка при получении статуса переиндексации {reindex_id}: {str(e)}")
+        raise HTTPException(
+            status_code=500, detail=f"Ошибка при получении статуса переиндексации: {str(e)}"
+        )
+
+async def perform_chroma_reindex(reindex_id: str):
+    """Фоновая задача для переиндексации Chroma"""
+    if not hasattr(price_list_service, '_upload_statuses'):
+        price_list_service._upload_statuses = {}
+        
+    _reindex_statuses = price_list_service._upload_statuses
+    if reindex_id not in _reindex_statuses:
+        _reindex_statuses[reindex_id] = {
+            "status": "initiated",
+            "percent_complete": 0,
+            "processed_files": 0,
+            "total_files": 0,
+            "current_stage": "подготовка к индексации",
+            "start_time": time.time(),
+            "indexed_files": []
+        }
+        
+    status = _reindex_statuses[reindex_id]
+    
+    try:
+        # Проверяем, есть ли start_time, если нет - добавляем
+        if 'start_time' not in status:
+            status['start_time'] = time.time()
+            
+        # Получаем список всех файлов в директории rules
+        rule_files = glob.glob("rules/*.txt") + glob.glob("rules/*[!.txt]")
+        total_files = len(rule_files)
+        
+        # Обновляем статус
+        status["status"] = "processing"
+        status["total_files"] = total_files
+        status["current_stage"] = "удаление старой коллекции"
+        _reindex_statuses[reindex_id] = status
+        
+        # Удаляем существующую коллекцию
+        chroma = ChromaWork('test')
+        chroma.delete_collection()
+        
+        # Обновляем статус
+        status["current_stage"] = "создание новой коллекции"
+        _reindex_statuses[reindex_id] = status
+        
+        # Создаем новый экземпляр
+        chroma = ChromaWork('test')
+        
+        # Индексируем файлы
+        indexed_files = []
+        for i, file_path in enumerate(rule_files):
+            try:
+                # Обновляем статус
+                status["current_stage"] = f"индексация файла {os.path.basename(file_path)}"
+                status["processed_files"] = i
+                status["percent_complete"] = int((i / total_files) * 100) if total_files > 0 else 0
+                _reindex_statuses[reindex_id] = status
+                
+                # Индексируем файл
+                with open(file_path, "r") as file:
+                    content = file.read()
+                    await chroma.add_items(content)
+                
+                # Добавляем в список проиндексированных
+                indexed_files.append(os.path.basename(file_path))
+                status["indexed_files"] = indexed_files
+                _reindex_statuses[reindex_id] = status
+                
+            except Exception as e:
+                logger.error(f"Ошибка индексации файла {file_path}: {str(e)}")
+                status["error"] = f"Ошибка при индексации файла {os.path.basename(file_path)}: {str(e)}"
+                _reindex_statuses[reindex_id] = status
+        
+        # Обновляем финальный статус
+        status["status"] = "completed"
+        status["percent_complete"] = 100
+        status["processed_files"] = total_files
+        status["current_stage"] = "завершено"
+        status["end_time"] = time.time()
+        
+        # Безопасно вычисляем elapsed_time
+        if 'start_time' in status:
+            status["elapsed_time"] = f"{status['end_time'] - status['start_time']:.2f} сек."
+        else:
+            status["elapsed_time"] = "время неизвестно"
+            
+        _reindex_statuses[reindex_id] = status
+        
+    except Exception as e:
+        logger.error(f"Ошибка при переиндексации Chroma: {str(e)}")
+        status["status"] = "error"
+        status["error"] = str(e)
+        status["current_stage"] = "ошибка"
+        status["end_time"] = time.time()
+        
+        # Безопасно вычисляем elapsed_time
+        if 'start_time' in status:
+            status["elapsed_time"] = f"{status['end_time'] - status['start_time']:.2f} сек."
+        else:
+            status["elapsed_time"] = "время неизвестно"
+            
+        _reindex_statuses[reindex_id] = status
