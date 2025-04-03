@@ -117,6 +117,9 @@
                     <li class="nav-item" role="presentation">
                         <a class="nav-link" id="price-list-tab-link" data-bs-toggle="tab" data-bs-target="#price-list-tab" href="#price-list-tab" role="tab" aria-controls="price-list-tab" aria-selected="false">Прайс-лист</a>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link" id="rules-tab-link" data-bs-toggle="tab" data-bs-target="#rules-tab" href="#rules-tab" role="tab" aria-controls="rules-tab" aria-selected="false">Правила</a>
+                    </li>
                 </ul>
             </div>
         </div>
@@ -389,6 +392,72 @@
                     </div>
                 </div>
             </div>
+            
+            <!-- Вкладка правил -->
+            <div class="tab-pane fade" id="rules-tab" role="tabpanel" aria-labelledby="rules-tab-link">
+                <div class="row">
+                    <div class="col-lg-10 mx-auto">
+                        <div class="card shadow">
+                            <div class="card-header bg-light">
+                                <h4 class="card-title mb-0">Редактирование правил обработки</h4>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-info">
+                                    <div class="d-flex align-items-center">
+                                        <i class="bi bi-info-circle-fill me-2 fs-4"></i>
+                                        <div>
+                                            Здесь вы можете просматривать и редактировать правила обработки для различных элементов.
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <!-- Выбор типа правил -->
+                                <div class="mb-4">
+                                    <label for="rule-type-select" class="form-label">Выберите тип правил:</label>
+                                    <select id="rule-type-select" class="form-select">
+                                        <!-- Типы правил будут загружены динамически -->
+                                    </select>
+                                </div>
+                                
+                                <!-- Список правил -->
+                                <div id="rules-list" class="list-group mb-4">
+                                    <!-- Сюда будут добавлены правила -->
+                                </div>
+                                
+                                <!-- Редактирование правила -->
+                                <div id="rule-editor" class="d-none">
+                                    <div class="card">
+                                        <div class="card-header bg-light">
+                                            <h5 class="card-title mb-0">Редактирование правила</h5>
+                                        </div>
+                                        <div class="card-body">
+                                            <form id="rule-edit-form">
+                                                <input type="hidden" id="rule-id">
+                                                <div class="mb-3">
+                                                    <label for="rule-title" class="form-label">Тема правила</label>
+                                                    <input type="text" class="form-control" id="rule-title">
+                                                </div>
+                                                <div class="mb-3">
+                                                    <label for="rule-content" class="form-label">Содержимое правила</label>
+                                                    <textarea class="form-control" id="rule-content" rows="15"></textarea>
+                                                </div>
+                                                <div class="d-flex justify-content-between">
+                                                    <button type="button" class="btn btn-secondary" id="rule-cancel-btn">
+                                                        <i class="bi bi-x-circle me-2"></i>Отмена
+                                                    </button>
+                                                    <button type="submit" class="btn btn-primary" id="rule-save-btn">
+                                                        <i class="bi bi-save me-2"></i>Сохранить
+                                                    </button>
+                                                </div>
+                                            </form>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -402,5 +471,189 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <!-- Custom JS -->
     <script src="/static/js/main.js"></script>
+    
+    <!-- JS для работы с правилами -->
+    <script>
+        // Текущий выбранный тип правил
+        let currentRuleType = "round";
+        
+        // Загрузка правил при переходе на вкладку
+        document.getElementById('rules-tab-link').addEventListener('click', () => {
+            // Загружаем типы правил
+            loadRuleTypes();
+        });
+        
+        // Загрузка типов правил
+        function loadRuleTypes() {
+            fetch('/api/rules/types')
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка при загрузке типов правил: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const selectElement = document.getElementById('rule-type-select');
+                    selectElement.innerHTML = '';
+                    
+                    data.forEach(type => {
+                        const option = document.createElement('option');
+                        option.value = type.id;
+                        option.textContent = type.name;
+                        
+                        // Устанавливаем selected для элемента с id "round"
+                        if (type.id === currentRuleType) {
+                            option.selected = true;
+                        }
+                        
+                        selectElement.appendChild(option);
+                    });
+                    
+                    // Загружаем правила выбранного типа
+                    loadRules(currentRuleType);
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки типов правил:', error);
+                    alert(`Ошибка при загрузке типов правил: ${error.message}`);
+                });
+        }
+        
+        // Обработка изменения типа правил
+        document.getElementById('rule-type-select').addEventListener('change', function() {
+            currentRuleType = this.value;
+            loadRules(currentRuleType);
+        });
+        
+        // Загрузка списка правил
+        function loadRules(ruleType = 'round') {
+            fetch(`/api/rules/${ruleType}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка при загрузке правил: ' + response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    const rulesList = document.getElementById('rules-list');
+                    rulesList.innerHTML = '';
+                    
+                    if (!data.blocks || data.blocks.length === 0) {
+                        rulesList.innerHTML = '<div class="alert alert-warning">Правила не найдены</div>';
+                        return;
+                    }
+                    
+                    data.blocks.forEach(block => {
+                        const ruleItem = document.createElement('a');
+                        ruleItem.href = '#';
+                        ruleItem.className = 'list-group-item list-group-item-action';
+                        ruleItem.innerHTML = `
+                            <div class="d-flex w-100 justify-content-between">
+                                <h5 class="mb-1">${block.title || 'Без названия'}</h5>
+                                <small>${block.content ? block.content.length : 0} символов</small>
+                            </div>
+                            <p class="mb-1">${block.content ? block.content.substring(0, 100) + '...' : 'Нет содержимого'}</p>
+                        `;
+                        ruleItem.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            editRule(block.id);
+                        });
+                        
+                        rulesList.appendChild(ruleItem);
+                    });
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки правил:', error);
+                    const rulesList = document.getElementById('rules-list');
+                    rulesList.innerHTML = `<div class="alert alert-danger">Ошибка при загрузке правил: ${error.message}</div>`;
+                });
+        }
+        
+        // Редактирование правила
+        function editRule(ruleId) {
+            if (!ruleId) {
+                alert('Ошибка: ID правила не определен');
+                return;
+            }
+            
+            fetch(`/api/rules/block/${ruleId}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('rule-id').value = data.id;
+                    document.getElementById('rule-title').value = data.title || '';
+                    document.getElementById('rule-content').value = data.content || '';
+                    
+                    document.getElementById('rules-list').classList.add('d-none');
+                    document.getElementById('rule-editor').classList.remove('d-none');
+                })
+                .catch(error => {
+                    console.error('Ошибка загрузки правила:', error);
+                    alert(`Ошибка при загрузке правила: ${error.message}`);
+                });
+        }
+        
+        // Отмена редактирования
+        document.getElementById('rule-cancel-btn').addEventListener('click', () => {
+            document.getElementById('rules-list').classList.remove('d-none');
+            document.getElementById('rule-editor').classList.add('d-none');
+        });
+        
+        // Сохранение правила
+        document.getElementById('rule-edit-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            
+            const ruleId = document.getElementById('rule-id').value;
+            if (!ruleId) {
+                alert('Ошибка: ID правила не определен');
+                return;
+            }
+            
+            const title = document.getElementById('rule-title').value;
+            const content = document.getElementById('rule-content').value;
+            
+            fetch(`/api/rules/block/${ruleId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    title: title,
+                    content: content
+                }),
+            })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(response.statusText);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    document.getElementById('rules-list').classList.remove('d-none');
+                    document.getElementById('rule-editor').classList.add('d-none');
+                    
+                    // Перезагружаем список правил
+                    loadRules(currentRuleType);
+                    
+                    alert('Правило успешно сохранено!');
+                })
+                .catch(error => {
+                    console.error('Ошибка сохранения правила:', error);
+                    
+                    // Даже при ошибке API возвращаемся к списку и перезагружаем его,
+                    // так как файл мог быть успешно сохранен
+                    document.getElementById('rules-list').classList.remove('d-none');
+                    document.getElementById('rule-editor').classList.add('d-none');
+                    
+                    // Пробуем перезагрузить список
+                    loadRules(currentRuleType);
+                    
+                    alert(`Предупреждение: ${error.message}. Изменения могли быть сохранены, список правил обновлен.`);
+                });
+        });
+    </script>
 </body>
 </html> 

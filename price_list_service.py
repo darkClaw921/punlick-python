@@ -1150,6 +1150,7 @@ class PriceListService:
 price_list_service = PriceListService()
 #uv run app:/services/price_list_service.py 
 if __name__ == "__main__":
+    import argparse
     import asyncio
     from pprint import pprint
     # price_list_service = PriceListService()

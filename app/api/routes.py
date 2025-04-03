@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse
 import time
 import uuid
 from pydantic import BaseModel
+import hashlib
 
 from app.core.config import settings
 from app.models.document import (
@@ -23,11 +24,13 @@ from app.models.document import (
     PriceListResponse,
     PriceListSearchQuery,
 )
+from app.models.rules import RulesFileResponse, RuleBlockResponse, RuleBlockUpdateRequest, RuleTypeResponse
 from app.services.ocr_service import ocr_service
 from app.services.chat_service import chat_service
 from app.services.export_service import export_service
 from app.services.xlsx_service import xlsx_service
 from app.services.price_list_service import price_list_service
+from app.services.rules_service import rules_service
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -424,3 +427,93 @@ async def get_price_list_upload_status(upload_id: str):
         raise HTTPException(
             status_code=500, detail=f"Ошибка при получении статуса загрузки: {str(e)}"
         )
+
+
+# Маршруты для работы с правилами
+@router.get("/rules/types", response_model=List[RuleTypeResponse])
+async def get_rule_types():
+    """Получение списка доступных типов правил"""
+    type_dict = rules_service.get_available_rule_types()
+    
+    types = [
+        RuleTypeResponse(id=type_id, name=type_name)
+        for type_id, type_name in type_dict.items()
+    ]
+    
+    return types
+
+
+@router.get("/rules/block/{block_id}", response_model=RuleBlockResponse)
+async def get_rule_block(block_id: str):
+    """Получение блока правил по ID"""
+    rule_block = rules_service.get_rule_block(block_id)
+    if not rule_block:
+        raise HTTPException(status_code=404, detail=f"Блок правил с ID {block_id} не найден")
+    
+    # Преобразуем модель RuleBlock в RuleBlockResponse
+    return RuleBlockResponse(
+        id=rule_block.id,
+        title=rule_block.title,
+        content=rule_block.content
+    )
+
+
+@router.put("/rules/block/{block_id}", response_model=RuleBlockResponse)
+async def update_rule_block(block_id: str, rule_update: RuleBlockUpdateRequest):
+    """Обновление блока правил"""
+    rule_block = rules_service.get_rule_block(block_id)
+    if not rule_block:
+        raise HTTPException(status_code=404, detail=f"Блок правил с ID {block_id} не найден")
+    
+    # Сохраняем значения перед обновлением
+    original_title = rule_block.title
+    original_content = rule_block.content
+    
+    # Определяем новые значения
+    new_title = rule_update.title if rule_update.title is not None else original_title
+    new_content = rule_update.content if rule_update.content is not None else original_content
+    
+    success = rules_service.update_rule_block(
+        block_id, 
+        title=rule_update.title, 
+        content=rule_update.content
+    )
+    
+    if not success:
+        raise HTTPException(status_code=500, detail="Не удалось обновить блок правил")
+    
+    # Создаем ответ на основе обновленных данных
+    return RuleBlockResponse(
+        id=block_id,  # Используем тот же ID для ответа
+        title=new_title,
+        content=new_content
+    )
+
+
+@router.get("/rules/{file_type}", response_model=RulesFileResponse)
+async def get_rules(file_type: str = "round"):
+    """Получение правил из файла по типу"""
+    try:
+        rules_file = rules_service.parse_rules_file(file_type)
+        
+        # Преобразуем модели RuleBlock в RuleBlockResponse
+        blocks_response = [
+            RuleBlockResponse(id=block.id, title=block.title, content=block.content)
+            for block in rules_file.blocks
+        ]
+        
+        return RulesFileResponse(blocks=blocks_response)
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Ошибка при получении правил типа {file_type}: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Ошибка при получении правил: {str(e)}"
+        )
+
+
+@router.get("/rules", response_model=RulesFileResponse)
+async def get_default_rules():
+    """Получение правил из файла по умолчанию (круглые)"""
+    return await get_rules("round")
