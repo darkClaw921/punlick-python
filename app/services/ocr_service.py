@@ -14,6 +14,7 @@ from app.models.document import DocumentResponse, DocumentItem, DocumentType
 # from ..models.document import DocumentResponse, DocumentItem
 from tqdm import tqdm
 import aiohttp
+# from app.services.price_list_service import PriceListService
 
 logger.add(
     "ocr_service.log",
@@ -60,7 +61,7 @@ class OCRService:
                     "content": [
                         {
                             "type": "text",
-                            "text": "найди все товары и верни их в виде списка в формате json Наименование|Количество|Ед.изм.",
+                            "text": "найди все товары и верни их в виде списка в формате json 'Наименование': наименование, 'Количество': количество, 'Ед.изм.': ед.изм.",
                         },
                         {"type": "text", "text": page.markdown},
                     ],
@@ -196,110 +197,65 @@ class OCRService:
         self, file_path: str, original_filename: str
     ) -> DocumentResponse:
         """Обработка изображения с использованием Mistral API"""
-        try:
-            uploaded_pdf = await self._client.files.upload_async(
-                file={
-                    "file_name": original_filename,
-                    "content": open(file_path, "rb"),
-                },
-                purpose="ocr",
-            )
-            await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
-            signed_url = await self._client.files.get_signed_url_async(
-                file_id=uploaded_pdf.id
-            )
-            promt = open(
-                "app/services/Pasted--1--1741736569399.txt", "r"
-            ).read()
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "найди все позиции и верни их в виде списка.",
-                        },
-                        {"type": "image_url", "image_url": signed_url.url},
-                    ],
-                }
-            ]
-
-            # Get the chat response
-            chat_response = await self._client.chat.complete_async(
-                model="pixtral-12b-2409", messages=messages
-            )
-
-            # Print the content of the response
-            text = chat_response.choices[0].message.content
-            logger.debug(f"Полученный ответ от API: {text}")
-
-            promt = open(
-                "app/services/Pasted--1--1741736569399.txt", "r"
-            ).read()
-            messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": promt
-                            + """и верни их в виде списка в формате json "Наименование": "Наименование", "Количество": "Количество", "Ед.изм.": "Ед.изм."" если чего то нет то не известно""",
-                        },
-                    ],
-                },
-                {"role": "user", "content": [{"type": "text", "text": text}]},
-            ]
-
-            # Get the chat response
-            chat_response = await self._client.chat.complete_async(
-                model="mistral-large-latest",
-                messages=messages,
-                max_tokens=50000,
-            )
-            text = chat_response.choices[0].message.content
-            logger.debug(f"Полученный ответ 2 от API: {text}")
-            try:
-                # Пытаемся распарсить JSON
-                products = self.prepare_text_anserw_to_dict(text)
-            except json.JSONDecodeError as e:
-                # Если не удалось распарсить JSON, возвращаем текст как есть
-                logger.warning(
-                    f"Не удалось распарсить JSON: {str(e)}, возвращаем текст как есть"
-                )
-                # Создаем простой формат для отображения
-                products = [
-                    {"Наименование": text, "Количество": "", "Ед.изм.": ""}
-                ]
-
-
-            # поиск соответствий в векторной базе
-            
-            price_list_service = PriceListService()
-            enriched_products = await price_list_service.find_matching_items(products)
-
-            document_response = DocumentResponse(
-                id=uploaded_pdf.id,
-                original_filename=original_filename,
-                items=[
-                    DocumentItem(
-                        text=item
-                        if isinstance(item, str)
-                        else json.dumps(item, ensure_ascii=False)
-                    )
-                    for item in enriched_products
+        uploaded_pdf = await self._client.files.upload_async(
+            file={
+                "file_name": original_filename,
+                "content": open(file_path, "rb"),
+            },
+            purpose="ocr",
+        )
+        await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
+        signed_url = await self._client.files.get_signed_url_async(
+            file_id=uploaded_pdf.id
+        )
+        
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": 'найди все позиции и верни их в виде списка в формате json "Наименование": наиминование, "Количество": количество, "Ед.изм.": ед.изм. даже если это 1 элемент то верни 1 элемент' ,
+                    },
+                    {"type": "image_url", "image_url": signed_url.url},
                 ],
+            }
+        ]
+
+        # Get the chat response
+        chat_response = await self._client.chat.complete_async(
+            model="pixtral-12b-2409", messages=messages
+        )
+
+        # Print the content of the response
+        products = chat_response.choices[0].message.content
+        logger.debug(f"Полученный ответ от API: {products}")
+        products = self.prepare_text_anserw_to_dict(products)
+        
+        price_list_service = PriceListService()
+        products = await price_list_service.find_matching_items(products)
+
+            
+
+        document_response = DocumentResponse(
+        id=uploaded_pdf.id,
+        original_filename=original_filename,
+        items=[
+            DocumentItem(
+                text=item
+                if isinstance(item, str)
+                else json.dumps(item, ensure_ascii=False)
             )
+            for item in products
+            ],
+        )
 
-            # Сохранение результата
-            self._results[uploaded_pdf.id] = document_response
+        # Сохранение результата
+        self._results[uploaded_pdf.id] = document_response
 
-            return document_response
+        return document_response
 
-        except Exception as e:
-            logger.error(
-                f"Ошибка при обработке изображения {original_filename}: {str(e)}"
-            )
-            raise
+        
 
     def get_result(self, document_id: str) -> Optional[DocumentResponse]:
         """Получение результата обработки по ID документа"""

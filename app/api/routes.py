@@ -250,22 +250,22 @@ async def process_chat_message(message: ChatMessageRequest):
             message.text, message_id
         )
 
-        # Обогащаем результаты данными из векторной базы
-        if result and result.items:
-            # Устанавливаем порог сходства (можно настроить)
-            similarity_threshold = 0.7
+        # # Обогащаем результаты данными из векторной базы
+        # if result and result.items:
+        #     # Устанавливаем порог сходства (можно настроить)
+        #     similarity_threshold = 0.7
             
-            # Ищем соответствия в векторной базе данных
-            enriched_items = await price_list_service.find_matching_items(
-                result.items, similarity_threshold
-            )
+        #     # Ищем соответствия в векторной базе данных
+        #     # enriched_items = await price_list_service.find_matching_items(
+        #     #     result.items, similarity_threshold
+        #     # )
             
-            # Обновляем элементы в результате
-            result.items = enriched_items
+        #     # Обновляем элементы в результате
+        #     # result.items = enriched_items
             
-            logger.info(
-                f"Обогащение результатов чата из векторной базы выполнено для {len(result.items)} элементов"
-            )
+        #     logger.info(
+        #         f"Обогащение результатов чата из векторной базы выполнено для {len(result.items)} элементов"
+        #     )
 
         processing_time = time.time() - start_time
         logger.info(

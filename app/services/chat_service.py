@@ -6,6 +6,7 @@ from mistralai import Mistral
 
 from app.core.config import settings
 from app.models.document import DocumentResponse, DocumentItem
+from app.services.price_list_service import PriceListService
 
 logger.add(
     "chat_service.log",
@@ -57,6 +58,9 @@ class ChatService:
         self, message_text: str, message_id: str
     ) -> DocumentResponse:
         """Обработка текстового сообщения из чата"""
+        
+        from chromaWork import ChromaWork
+        
         try:
             logger.debug(f"Обработка текстового сообщения: {message_text}")
 
@@ -74,28 +78,17 @@ class ChatService:
             ]
 
             # Получаем ответ от API
-            chat_response = self._client.chat.complete(
+            chat_response = await self._client.chat.complete_async(
                 model="mistral-large-latest", messages=messages
             )
 
             # Получаем содержимое ответа
             text = chat_response.choices[0].message.content
             logger.debug(f"Полученный ответ от API: {text}")
-
-            try:
-                # Пытаемся распарсить JSON
-                products = self.prepare_text_anserw_to_dict(text)
-                if not products:
-                    # Если не удалось распарсить JSON или результат пустой, создаем пустой список
-                    products = []
-            except Exception as e:
-                logger.warning(
-                    f"Не удалось распарсить JSON: {str(e)}, возвращаем текст как есть"
-                )
-                # Создаем простой формат для отображения
-                products = [
-                    {"Наименование": text, "Количество": "", "Ед.изм.": ""}
-                ]
+            text = self.prepare_text_anserw_to_dict(text)
+            
+            price_list_service = PriceListService()
+            products = await price_list_service.find_matching_items(text)
 
             document_response = DocumentResponse(
                 id=message_id,
