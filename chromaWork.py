@@ -137,8 +137,11 @@ class ChromaWork:
             # pprint(requests)
             return requests['metadatas'][0][0]["promt"]
         else:
+            
+            
             return self.collection.query(
                 query_embeddings=[embeddings],
+                # query_texts=[query],
                 n_results=n_results
             )
     def delete_collection(self):    
@@ -146,15 +149,20 @@ class ChromaWork:
         self.client.delete_collection(name=self.CHROMA_COLLECTION_NAME)
         a=self.client.list_collections()
         print(a)
-    
+
+
+
 if __name__ == "__main__":
     
-    chromaWork = ChromaWork('test')
-    chromaWork.delete_collection()
+    # chromaWork = ChromaWork('test')
+    # chromaWork.delete_collection()
+    # asyncio.run(chromaWork.add_items(open("rules/новые правила пряямоугольных.txt", "r").read()))
     chromaWork = ChromaWork('test') 
-    asyncio.run(chromaWork.add_items(open("rules/новые правила пряямоугольных.txt", "r").read()))
+    
+    # chromaWork = ChromaWork('price_list') 
     # chromaWork.add_items(open("rules/новые правила КРуглых.txt", "r").read())
     # chromaWork.delete_collection()
     # chromaWork.delete_collection()
-    # pprint(chromaWork.get_items("врезка φ125/φ160", isReturnPromt=True))
+    # pprint(chromaWork.get_items("Врезка из листовой стали по ГОСТ 14918-2020 S=0,7 мм", isReturnPromt=True))
+    pprint(chromaWork.get_items("Отвод прямоугольного воздуховода 90° 150х100, b=0,8"))
     

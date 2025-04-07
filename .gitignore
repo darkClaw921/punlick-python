@@ -14,3 +14,4 @@ exports/*
 __pycache__/
 vectordb/*
 *chroma.sqlite3*
+*.pdf

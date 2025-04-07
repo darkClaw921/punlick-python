@@ -586,6 +586,7 @@ class PriceListService:
                     )
 
             # Форматируем результаты
+            pprint(results)
             items = []
             if results and len(results["ids"]) > 0:
                 for i, item_id in enumerate(results["ids"][0]):
@@ -1069,6 +1070,7 @@ class PriceListService:
             List[Dict]: Список обогащенных товаров с эталонными названиями
         """
         from chromaWork import ChromaWork
+        from newcode import process_row_from_list
         try:
             chromaDB = ChromaWork('test')
             # Результирующий список
@@ -1076,65 +1078,78 @@ class PriceListService:
             
             self.logger.info(f"Начало поиска соответствий для {len(items)} товаров с порогом {similarity_threshold * 100}%")
             
-            for idx, item in enumerate(items):
+            # цикл пачкой по 30 товаров
+            for item in range(0, len(items), 30):
                 # Получаем название товара
                 print(item)
 
-                item_name = item.get("Наименование", "")
+                # item_name = item.get("Наименование", "")
+                names = [item.get("Наименование", "") for item in items]
                 # item_name = item.text
                     
                 # Если имя товара не пустое, ищем совпадения в базе
-                if item_name:
-                    self.logger.info(f"[Товар {idx+1}] Поиск соответствий для: '{item_name}'")
+                if names:
+                    # self.logger.info(f"[Товар {idx+1}] Поиск соответствий для: '{item_name}'")
                     # item_name = item_name.replace("Φ", "d")
                     # item_name = item_name.replace("Ф", "d")
                     # Ищем похожие товары в векторной базе
-                    promt = chromaDB.get_items(item_name, isReturnPromt=True)
+                    # promt = chromaDB.get_items(item_name, isReturnPromt=True)
+                    promt = open("rules/промпт для заявки 2.txt", "r").read()
                     logger.info(f"вот правила для правильного наименования: {promt[:50]} ...")
+
+                    messages = [
+                        {"role": "system", "content": f"вот правила для правильного наименования {promt}"},
+                        {"role": "user", "content": f'верни правильное наименование для: {names} в формате json список с полями "Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол" '}
+                    ]
+
+                    print(messages)
                     response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
-                        messages=[
-                            {"role": "system", "content": f"вот правила для правильного наименования{promt}"},
-                            {"role": "user", "content": f"верни правильное наименование для: {item_name} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
+                        messages=messages,
                             # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
-                        ],
+                        
+                    
                         max_tokens=40000,
                         temperature=0.9
                     )
                     # pprint(response)
                     answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("Правильное наименование: ", answer)
+                    # print("Правильное наименование: ", answer)
+                    pprint(answer)
+                    prepare_anser=process_row_from_list(answer)
+                    # try:
+                    #     answerName = answer[0]["Наименование"]
+                    # except:
+                    #     continue
 
-                    try:
-                        answerName = answer[0]["Наименование"]
-                    except:
-                        continue
-
-                    matches = await self.search_similar_items(query=answerName, limit=5)
+                    # matches = await self.search_similar_items(query=answerName, limit=5)
                         
 
                     # pprint(matches)
-                    allTexts = [match["description"] for match in matches]
+                    # allTexts = [match["description"] for match in matches]
                     
-                    allTexts = '\n'.join(allTexts)
-                    print("Список похожих товаров из базы данных: ", allTexts)
-                    response = await self.mistral_client.chat.complete_async(
-                        model="mistral-small-latest",
-                        messages=[
-                            {"role": "system", "content": f"вот список товаров из базы данных {allTexts}"},
-                            {"role": "user", "content": f"верни то что больше соответствует: {answerName} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
-                            # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
-                            # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
-                        ],
-                        max_tokens=40000,
-                        temperature=0.9
-                    )
-                    # print("===================\n", allTexts)
-                    answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
-                    print("более подходящий товар: для ", answerName, answer)
+                    # allTexts = '\n'.join(allTexts)
+                    # print("Список похожих товаров из базы данных: ", allTexts)
+                    # response = await self.mistral_client.chat.complete_async(
+                    #     model="mistral-small-latest",
+                    #     messages=[
+                    #         {"role": "system", "content": f"вот список товаров из базы данных {allTexts}"},
+                    #         {"role": "user", "content": f"верни то что больше соответствует: {answerName} в формате json список с полями 'Наименование', 'Ед.изм.', 'Количество'"}
+                    #         # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
+                    #         # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
+                    #     ],
+                    #     max_tokens=40000,
+                    #     temperature=0.9
+                    # )
+                    # # print("===================\n", allTexts)
+                    # answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
+                    # print("более подходящий товар: для ", answerName, answer)
 
-                    enriched_items.append(answer[0])
+
+
+                    
+                    enriched_items.extend(prepare_anser)
                     
             
             
@@ -1156,26 +1171,92 @@ if __name__ == "__main__":
     # price_list_service = PriceListService()
     # asyncio.run(price_list_service.update_price_list_collection(file_path="/Users/igorgerasimov/Downloads/наш прайс воздуховодов2.xlsx", 
                                                                 # original_filename="наш прайс воздуховодов2.xlsx", ))
-    items = [
-   
+    items=[
     {
-        "Наименование": "Врезка Φ125/Φ200",
-        "Количество": "1",
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,5 мм",
+        "Количество": "200",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,6 мм",
+        "Количество": "250",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "300x200",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "300x300",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "400x300",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "700x400",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод гибкий алюминиевый",
+        "Количество": "250",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Отвод-90 из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "400x700",
         "Ед.изм.": "шт"
     },
-    
     {
-        "Наименование": "Переход Φ315/Φ250",
-        "Количество": "1 шт",
+        "Наименование": "Отвод-90 из листовой стали по ГОСТ 14918-2020 S=0,8 мм",
+        "Количество": "400x700",
         "Ед.изм.": "шт"
     },
-   
     {
-        "Наименование": "Узел прохода УП-1 (без клапана) d 125 -1250",
-        "Количество": "1 шт",
+        "Наименование": "Врезка из листовой стали по ГОСТ 14918-2020 S=0,6 мм",
+        "Количество": "250/250",
         "Ед.изм.": "шт"
     },
-    
+    {
+        "Наименование": "Врезка из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "400x700/200",
+        "Ед.изм.": "шт"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "600x400",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "1000x600",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,7 мм",
+        "Количество": "400x400",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,9 мм",
+        "Количество": "700x400",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Воздуховод из листовой стали по ГОСТ 14918-2020 S=0,8 мм",
+        "Количество": "400x400",
+        "Ед.изм.": "м"
+    },
+    {
+        "Наименование": "Отвод-90 из листовой стали по ГОСТ 14918-2020 S=0,8 мм",
+        "Количество": "700x400",
+        "Ед.изм.": "шт"
+    }
 ]
     price_list_service = PriceListService()
     finds = asyncio.run(price_list_service.find_matching_items(items))

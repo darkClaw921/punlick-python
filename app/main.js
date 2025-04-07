@@ -57,11 +57,11 @@ function displayResults(data) {
             
             // Добавляем остальные ячейки
             const quantityCell = document.createElement('td');
-            quantityCell.textContent = itemData.Количество || '-';
+            quantityCell.textContent = itemData['Кол-во'] || '-';
             row.appendChild(quantityCell);
             
             const unitCell = document.createElement('td');
-            unitCell.textContent = itemData['Ед.изм.'] || '-';
+            unitCell.textContent = itemData['Ед. изм.'] || '-';
             
             // Если есть цена, добавляем её к единице измерения
             if (itemData.Цена) {

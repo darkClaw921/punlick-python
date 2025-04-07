@@ -448,8 +448,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Добавляем ячейки
                 row.innerHTML = `
                     <td>${itemData.Наименование || '-'}</td>
-                    <td>${itemData.Количество || '-'}</td>
-                    <td>${itemData['Ед.изм.'] || '-'}</td>
+                    <td>${itemData.Количество || itemData['Кол-во'] || '-'}</td>
+                    <td>${itemData['Ед.изм.'] || itemData['Ед. изм.'] || '-'}</td>
                 `;
                 
                 // Добавляем строку в таблицу
@@ -485,8 +485,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Добавляем ячейки
                 row.innerHTML = `
                     <td>${itemData.Наименование || '-'}</td>
-                    <td>${itemData.Количество || '-'}</td>
-                    <td>${itemData['Ед.изм.'] || '-'}</td>
+                    <td>${itemData['Кол-во'] || '-'}</td>
+                    <td>${itemData['Ед. изм.'] || '-'}</td>
                 `;
                 
                 // Добавляем строку в таблицу

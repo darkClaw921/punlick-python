@@ -53,8 +53,10 @@ class OCRService:
             pages, desc="Обработка страниц из документа (Mistral API)"
         ):
             if count_pages >= 20:
+                print(all_text)
                 return all_text
-
+            
+            continue
             messages = [
                 {
                     "role": "user",
@@ -160,6 +162,7 @@ class OCRService:
 
         all_texts = await self.send_mistral_document_batch(ocr_response.pages)
         products = all_texts
+        print(products)
         # for text in all_texts:
         #     try:
         #         # Пытаемся распарсить JSON
