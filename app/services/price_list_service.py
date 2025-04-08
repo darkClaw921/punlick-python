@@ -1078,13 +1078,15 @@ class PriceListService:
             
             self.logger.info(f"Начало поиска соответствий для {len(items)} товаров с порогом {similarity_threshold * 100}%")
             
-            # цикл пачкой по 30 товаров
-            for item in range(0, len(items), 15):
-                # Получаем название товара
-                print(item)
-
-                # item_name = item.get("Наименование", "")
-                names = [item.get("Наименование", "") for item in items]
+            # Обработка по 25 элементов за итерацию
+            batch_size = 25
+            for i in range(0, len(items), batch_size):
+                # Получаем срез из максимум 15 элементов
+                batch = items[i:i + batch_size]
+                print(f"Обработка элементов {i+1}-{i+len(batch)} из {len(items)}")
+                
+                # Получаем наименования для текущей пачки
+                names = [item.get("Наименование", "") for item in batch]
                 # item_name = item.text
                     
                 # Если имя товара не пустое, ищем совпадения в базе
