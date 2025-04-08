@@ -1079,7 +1079,7 @@ class PriceListService:
             self.logger.info(f"Начало поиска соответствий для {len(items)} товаров с порогом {similarity_threshold * 100}%")
             
             # цикл пачкой по 30 товаров
-            for item in range(0, len(items), 30):
+            for item in range(0, len(items), 15):
                 # Получаем название товара
                 print(item)
 
@@ -1110,7 +1110,7 @@ class PriceListService:
                             # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
                         
                     
-                        max_tokens=40000,
+                        max_tokens=50000,
                         temperature=0.9
                     )
                     # pprint(response)

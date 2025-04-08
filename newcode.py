@@ -199,7 +199,8 @@ def process_troynik(row):
     size = str(row["Размер"]).lower().replace("х", "x").replace("*", "x").replace(" ", "")
     parts = size.split('/')
 
-    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+    # quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+    quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
     unit = row["Ед. изм."] or "шт"
 
     # --- Тройник ПР с КР врезкой ---
@@ -269,7 +270,8 @@ def process_troynik(row):
         depth = 100
         thickness = row["Толщина"] or get_thickness(w1, h1)
         thickness = normalize_thickness(thickness)
-        quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+        # quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+        quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
         unit = row["Ед. изм."] or "шт"
         connection = "[30]" if max(w1, h1, w2, h2, w3, h3) >= 1000 else "[20]"
         name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
@@ -288,6 +290,7 @@ def process_troynik(row):
         thickness = row["Толщина"] or get_thickness(w1, h1)
         thickness = normalize_thickness(thickness)
         quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+        
         unit = row["Ед. изм."] or "шт"
         connection = "[30]" if max(w1, h1, w2, h2) >= 1000 else "[20]"
         name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
@@ -811,8 +814,10 @@ def process_row(row):
     from pprint import pprint
     """Обработка строки с учетом регистронезависимого определения типа"""
     item_type = str(row["Наименование"]).strip().lower()  # Переводим в нижний регистр
-    print(row)
+    
     pprint(item_type)
+    row['Кол-во']=1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+    print(row)
     if item_type in handlers:
         try:
             return handlers[item_type](row)
@@ -899,7 +904,7 @@ def process_row_from_list(result)->list[dict]:
 if __name__ == "__main__":  
     result = [{'Длина': '-',
   'Ед. изм.': '-',
-  'Кол-во': '-',
+  'Кол-во': '2',
   'Наименование': 'Вентилятор',
   'Размер': '125',
   'Тип': 'канальный круглого сечения',
