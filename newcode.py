@@ -27,6 +27,161 @@ def process_skotch(row):
         "Ед. изм.": "шт"
     }
 
+def process_diffuzor(row):
+    size = str(row["Размер"]).strip().lower().replace('x', 'х')  # <-- русская "х" везде
+    
+    quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+    unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+
+    if '450х450' in size:
+        diffuzor_name = "Диффузор вентиляционный потолочный 4АПН (анемостат) 450х450 мм"
+        adapter_name = "Адаптер ПР 300*300 -300(h) с врезкой d 200 Оц.С/0,5/"
+    elif '600х600' in size:
+        diffuzor_name = "Диффузор вентиляционный потолочный 4АПН (анемостат) 600х600 мм"
+        adapter_name = "Адаптер ПР 460*460 -300(h) с врезкой d 200 Оц.С/0,5/"
+    else:
+        diffuzor_name = f"Диффузор вентиляционный потолочный 4АПН (анемостат) {size} мм"
+        size_adapter = size.replace('х', '*').replace('x', '*')  # если пользователь ввёл что-то иное
+        adapter_name = f"Адаптер ПР {size_adapter} -300(h) с врезкой d 200 Оц.С/0,5/"
+
+    return [
+        {
+            "Наименование": diffuzor_name,
+            "Кол-во": quantity,
+            "Ед. изм.": unit
+        },
+        {
+            "Наименование": adapter_name,
+            "Кол-во": quantity,
+            "Ед. изм.": unit
+        }
+    ]
+
+
+
+def process_perehod(row):
+    size_raw = str(row["Размер"]).replace("х", "x").replace("*", "x").replace(" ", "").lower()
+    parts = size_raw.split("/")
+    if len(parts) != 2:
+        raise ValueError(f"⛔ Неверный формат размера перехода: {size_raw}")
+
+    def is_rect(part): return 'x' in part
+    def is_round(part): return not is_rect(part)
+
+    part1, part2 = parts
+
+    def parse_rect(s):
+        w, h = map(int, s.split("x"))
+        return w, h
+
+    def parse_dia(s):
+        return int(s.replace('d', '').replace('ø', '').replace('ф', ''))
+
+    # Тип (учёт "-" как отсутствующего значения, защита от "тип-тип-1")
+    raw_type = str(row["Тип"]).strip().lower()
+    if raw_type in ["", "none", "nan", "-"]:
+        raw_type = "1"
+    if not raw_type.startswith("тип-"):
+        transition_type = f"тип-{raw_type}"
+    else:
+        transition_type = raw_type
+
+    # Переход КР ↔ КР
+    if is_round(part1) and is_round(part2):
+        d1, d2 = sorted([parse_dia(part1), parse_dia(part2)])
+        thickness = row["Толщина"]
+        if pd.isna(thickness) or str(thickness).strip().lower() in ["", "none", "nan"]:
+            thickness = get_thickness(d2, d2)
+        else:
+            thickness = str(thickness).replace(',', '.')
+        thickness = thickness.replace('.', ',')
+
+        name = f"Переход КР d {d1}/{d2} -300 {transition_type} Оц.С/{thickness}/ [нп]"
+
+    # Переход ПР ↔ ПР
+    elif is_rect(part1) and is_rect(part2):
+        w1, h1 = parse_rect(part1)
+        w2, h2 = parse_rect(part2)
+        thickness = row["Толщина"]
+        if pd.isna(thickness) or str(thickness).strip().lower() in ["", "none", "nan"]:
+            thickness = get_thickness(w1, h1)
+        else:
+            thickness = str(thickness).replace(',', '.')
+        thickness = thickness.replace('.', ',')
+
+        connection = "[30]" if max(w1, h1, w2, h2) >= 1000 else "[20]"
+        name = f"Переход ПР {w1}*{h1}/{w2}*{h2} -300 {transition_type} Оц.С/{thickness}/ {connection}"
+
+    # Переход с ПР на КР
+    else:
+        if is_rect(part1):
+            width, height = parse_rect(part1)
+            dia = parse_dia(part2)
+        else:
+            width, height = parse_rect(part2)
+            dia = parse_dia(part1)
+        thickness = row["Толщина"]
+        if pd.isna(thickness) or str(thickness).strip().lower() in ["", "none", "nan"]:
+            thickness = get_thickness(width, height)
+        else:
+            thickness = str(thickness).replace(',', '.')
+        thickness = thickness.replace('.', ',')
+
+        connection = "[30]" if max(width, height) >= 1000 else "[20]"
+        name = f"Переход с ПР на КР {width}*{height}/d {dia} -300 {transition_type} Оц.С/{thickness}/ {connection}"
+
+    quantity = int(float(row["Кол-во"])) if pd.notna(row["Кол-во"]) else 1
+    unit = row["Ед. изм."] if pd.notna(row["Ед. изм."]) and str(row["Ед. изм."]).strip() else "шт"
+
+    return {
+        "Наименование": name,
+        "Кол-во": quantity,
+        "Ед. изм.": unit
+    }
+
+
+
+def process_vrezka(row):
+    """Универсальный обработчик всех типов врезок: КР/КР, ПР/КР, с отбортовкой"""
+    size = str(row["Размер"]).strip().lower()
+    size = size.replace('d', '').replace('ф', '').replace('ø', '').replace(' ', '')
+
+    mark = "-100 Оц.С"
+    thickness = row["Толщина"]
+    if pd.isna(thickness):
+        thickness = "0.5"
+    thickness = normalize_thickness(thickness)
+
+    if '/' in size:
+        part1, part2 = size.split('/')
+
+        # Прямоугольная врезка в круглую трубу
+        if any(x in part1 for x in ['x', 'х', '*']):
+            pr_part = part1.replace('х', '*').replace('x', '*')
+            width, height = map(int, pr_part.split('*'))
+            diameter = int(part2)
+            connection = "[30]" if max(width, height) >= 1000 else "[20]"
+            name = f"Врезка ПР в КР трубу {width}*{height}/d {diameter} {mark}/{thickness}/ {connection}"
+        else:
+            # Круглая врезка в круглую трубу
+            d1, d2 = map(int, [part1, part2])
+            name = f"Врезка КР в КР трубу d {min(d1,d2)}/{max(d1,d2)} {mark}/{thickness}/"
+    else:
+        # Врезка с отбортовкой
+        if any(x in size for x in ['x', 'х', '*']):
+            size = size.replace('х', '*').replace('x', '*')
+            width, height = map(int, size.split('*'))
+            connection = "[30]" if max(width, height) >= 1000 else "[20]"
+            name = f"Врезка с отборт ПР {width}*{height} {mark}/{thickness}/ {connection}"
+        else:
+            diameter = int(size)
+            name = f"Врезка с отборт КР d {diameter} {mark}/{thickness}/"
+    count = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+    return {
+        "Наименование": name,
+        "Кол-во": count,
+        "Ед. изм.": row["Ед. изм."] if pd.notna(row["Ед. изм."]) else "шт"
+    }
 
 def process_ozks(row):
     """Обработка огнезащитного состава ОЗКС, фасовка 25кг, округляется по вёдрам (шт)."""
@@ -44,9 +199,33 @@ def process_troynik(row):
     size = str(row["Размер"]).lower().replace("х", "x").replace("*", "x").replace(" ", "")
     parts = size.split('/')
 
+    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+    unit = row["Ед. изм."] or "шт"
+
+    # --- Тройник ПР с КР врезкой ---
+    if len(parts) in [2, 3] and 'x' in parts[0] and 'x' not in parts[1]:
+        w1, h1 = map(int, parts[0].split('x'))  # прямоугольный вход
+        d_branch = int(re.sub(r'[^\d]', '', parts[1]))  # круглая врезка
+        if len(parts) == 3 and 'x' in parts[2]:
+            w3, h3 = map(int, parts[2].split('x'))
+        else:
+            w3, h3 = w1, h1
+
+        length = d_branch + 200
+        depth = 100
+        thickness = row["Толщина"] or get_thickness(w1, h1)
+        thickness = normalize_thickness(thickness)
+        connection = "[30]" if max(w1, h1, w3, h3, d_branch) >= 1000 else "[20]"
+
+        name = f"Тройник ПР с КР врезкой {w1}*{h1}/d {d_branch}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
+        return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
+
+    size = str(row["Размер"]).lower().replace("х", "x").replace("*", "x").replace(" ", "")
+    parts = size.split('/')
+
     # --- Круглый тройник ---
     if all('x' not in p for p in parts):
-        diameters = list(map(int, [p.replace('d', '') for p in parts]))
+        diameters = list(map(int, [re.sub(r'[^\d]', '', p) for p in parts]))
         if len(diameters) == 1:
             d_main = d_branch = d_output = diameters[0]
         elif len(diameters) == 2:
@@ -60,57 +239,61 @@ def process_troynik(row):
         
         length = d_branch + 200
         depth = 100
-        thickness = row["Толщина"]
-        if pd.isna(thickness) or thickness in ["", "None", "nan"]:
-            thickness = get_thickness(d_main, d_main)
+        thickness = row["Толщина"] or get_thickness(d_main, d_main)
         thickness = normalize_thickness(thickness)
         quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-        unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+        unit = row["Ед. изм."] or "шт"
         name = f"Тройник КР d {d_main}/{d_branch}/{d_output} -{length} -{depth} Оц.С/{thickness}/ [нп]"
         return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
 
     # --- КР с ПР врезкой ---
     elif len(parts) == 2 and 'x' in parts[1] and 'x' not in parts[0]:
-        kr_diameter = int(parts[0].replace('d', '').replace('ø', '').replace('ф', ''))
+        kr_diameter = int(re.sub(r'[^\d]', '', parts[0]))
         width, height = map(int, parts[1].split('x'))
         d_out = kr_diameter
         length = width + 200
         depth = 100
-        thickness = row["Толщина"]
-        if pd.isna(thickness) or thickness in ["", "None", "nan"]:
-            thickness = get_thickness(width, height)
+        thickness = row["Толщина"] or get_thickness(width, height)
         thickness = normalize_thickness(thickness)
         quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-        unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+        unit = row["Ед. изм."] or "шт"
         name = f"Тройник КР с ПР врезкой d {kr_diameter}/{width}*{height}/d {d_out} -{length} -{depth} Оц.С/{thickness}/ [нп]"
         return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
 
-    # --- Прямоугольный тройник ---
-    elif len(parts) == 1 and 'x' in parts[0]:
-        w1, h1 = map(int, parts[0].split('x'))
-        w2, h2 = w1, h1
+    # --- Прямоугольный тройник (формат вход/врезка/выход) ---
+    elif len(parts) == 3 and all('x' in p for p in parts):
+        w1, h1 = map(int, parts[0].split('x'))  # вход
+        w2, h2 = map(int, parts[1].split('x'))  # врезка
+        w3, h3 = map(int, parts[2].split('x'))  # выход
+        length = w2 + 200
+        depth = 100
+        thickness = row["Толщина"] or get_thickness(w1, h1)
+        thickness = normalize_thickness(thickness)
+        quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+        unit = row["Ед. изм."] or "шт"
+        connection = "[30]" if max(w1, h1, w2, h2, w3, h3) >= 1000 else "[20]"
+        name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
+        return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
+
+    # --- Прямоугольный тройник (вход/врезка) ---
     elif len(parts) == 2 and all('x' in p for p in parts):
-        w1, h1 = map(int, parts[0].split('x'))
-        w2, h2 = map(int, parts[1].split('x'))
-        # Меняем местами, если врезка больше входа
-        if h2 > h1:
+        w1, h1 = map(int, parts[0].split('x'))  # вход
+        w2, h2 = map(int, parts[1].split('x'))  # врезка
+        w3, h3 = w1, h1  # выход = вход
+        if h2 > h1:  # поправка, если врезка больше
             w1, h1, w2, h2 = w2, h2, w1, h1
-    else:
-        raise ValueError(f"⛔ Не удалось интерпретировать размер тройника: {size}")
+            w3, h3 = w1, h1
+        length = w2 + 200
+        depth = 100
+        thickness = row["Толщина"] or get_thickness(w1, h1)
+        thickness = normalize_thickness(thickness)
+        quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
+        unit = row["Ед. изм."] or "шт"
+        connection = "[30]" if max(w1, h1, w2, h2) >= 1000 else "[20]"
+        name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
+        return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
 
-    w3, h3 = w1, h1
-    length = w2 + 200
-    depth = 100
-    thickness = row["Толщина"]
-    if pd.isna(thickness) or thickness in ["", "None", "nan"]:
-        thickness = get_thickness(w1, h1)
-    thickness = normalize_thickness(thickness)
-    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-    unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
-    connection = "[30]" if max(w1, h1, w2, h2) >= 1000 else "[20]"
-    name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
-    return {"Наименование": name, "Кол-во": quantity, "Ед. изм.": unit}
-
+    raise ValueError(f"⛔ Не удалось интерпретировать размер тройника: {size}")
 
 
 def process_mbor(row):
@@ -166,79 +349,77 @@ def process_regulyator_klapan(row):
 
 
 def process_shumoglushitel(row):
-    """Обработка шумоглушителя КР (круглый)."""
+    """Обработка шумоглушителя (круглый и прямоугольный)."""
     size = str(row["Размер"]).strip().lower().replace('d', '').replace('ф', '').replace('ø', '')
-    diameter = int(size)
-
-    # Длина
-    length = int(row["Длина"]) if not pd.isna(row["Длина"]) else 900
-
-    # Толщина
-    if pd.isna(row["Толщина"]) or str(row["Толщина"]).strip() in ["", "None", "nan"]:
-        thickness = '0.5'
-    else:
-        thickness = str(row["Толщина"]).replace(',', '.')
-    thickness = thickness.replace('.', ',')
-
-    # Кол-во
-    quantity = int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1
-
-    # Ед. изм.
-    unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
-
-    name = f"Шумоглушитель КР d {diameter} -{length} SoundTek Оц.С/{thickness}/"
-
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
-
-
-def process_vrezka_otbort(row):
-    """Универсальный обработчик врезок: КР в КР, ПР в КР, с отбортовкой (ПР/КР)."""
-    size = str(row["Размер"]).strip().lower().replace('х', '*').replace('x', '*')
     
-    # Новый формат: прямоугольник / круг
-    if '/' in size:
-        pr_part, kr_part = size.split('/')
-        if '*' in pr_part and kr_part.isdigit():
-            # Это врезка ПР в КР трубу (порядок сохраняем!)
-            width, height = map(int, pr_part.split('*'))
-            diameter = int(kr_part)
-            thickness = get_thickness(width, height) if pd.isna(row["Толщина"]) else row["Толщина"]
-            thickness = str(thickness).replace('.', ',')
-            connection = "[30]" if max(width, height) >= 1000 else "[20]"
-            name = f"Врезка ПР в КР трубу {width}*{height}/d {diameter} -100 Оц.С/{thickness}/ {connection}"
-            quantity = int(row["Кол-во"]) if not pd.isna(row["Кол-во"]) else 1
-            unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
-            return {
-                "Наименование": name,
-                "Кол-во": quantity,
-                "Ед. изм.": unit
-            }
+    # Заменяем все возможные варианты символа 'x' на стандартный
+    size = size.replace('х', 'x').replace('×', 'x')
 
-    # Обычные врезки с отбортовкой
-    if '*' in size:
-        width, height = map(int, size.split('*'))
-        thickness = get_thickness(width, height) if pd.isna(row["Толщина"]) else row["Толщина"]
-        thickness = str(thickness).replace('.', ',')
+    # Проверяем, является ли размер прямоугольным
+    if 'x' in size:  # Прямоугольный
+        try:
+            width, height = map(int, size.split('x'))
+        except ValueError:
+            raise ValueError(f"Некорректный размер прямоугольного шумоглушителя: {size}")
+
+        # Длина
+        length = int(row["Длина"]) if not pd.isna(row["Длина"]) else 1000
+
+        # Толщина по таблице
+        thickness = str(row["Толщина"]).strip() if not pd.isna(row["Толщина"]) else ""
+        if thickness in ["", "-", "None", "nan"]:  # Если толщина не указана или указан "-"
+            thickness = get_thickness(width, height)  # Определение толщины по таблице
+        else:
+            thickness = thickness.replace(',', '.')
+        thickness = thickness.replace('.', ',')
+
+        # Кол-во
+        quantity = int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1
+
+        # Ед. изм.
+        unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+
+        # Определение соединения
         connection = "[30]" if max(width, height) >= 1000 else "[20]"
-        name = f"Врезка с отборт ПР {width}*{height} -100 Оц.С/{thickness}/ {connection}"
-    else:
-        diameter = int(re.sub(r'\D', '', size))
-        thickness = get_thickness(diameter, diameter) if pd.isna(row["Толщина"]) else row["Толщина"]
-        thickness = str(thickness).replace('.', ',')
-        name = f"Врезка с отборт КР d {diameter} -100 Оц.С/{thickness}/"
 
-    quantity = int(row["Кол-во"]) if not pd.isna(row["Кол-во"]) else 1
-    unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+        name = f"Шумоглушитель пластинчатый ПР {width}*{height} -{length} SoundTek Оц.С/{thickness}/ {connection}"
 
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
+        return {
+            "Наименование": name,
+            "Кол-во": quantity,
+            "Ед. изм.": unit
+        }
+    
+    else:  # Круглый
+        try:
+            diameter = int(size)
+        except ValueError:
+            raise ValueError(f"Некорректный размер круглого шумоглушителя: {size}")
+
+        # Длина
+        length = int(row["Длина"]) if not pd.isna(row["Длина"]) else 900
+
+        # Толщина
+        thickness = str(row["Толщина"]).strip() if not pd.isna(row["Толщина"]) else ""
+        if thickness in ["", "-", "None", "nan"]:  # Если толщина не указана или указан "-"
+            thickness = '0,5'  # Значение по умолчанию для круглых
+        else:
+            thickness = thickness.replace(',', '.')
+            thickness = thickness.replace('.', ',')
+
+        # Кол-во
+        quantity = int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1
+
+        # Ед. изм.
+        unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
+
+        name = f"Шумоглушитель КР d {diameter} -{length} SoundTek Оц.С/{thickness}/"
+
+        return {
+            "Наименование": name,
+            "Кол-во": quantity,
+            "Ед. изм.": unit
+        }
 
 
 # ------------------- Толщина по таблице -------------------
@@ -463,190 +644,7 @@ def process_drossel_kr(row):
 
 
 
-def process_perehod_pr(row):
-    size = str(row["Размер"]).replace("х", "x").replace("*", "x").replace(" ", "").lower()
-    parts = size.split("/")
-    if len(parts) != 2:
-        raise ValueError(f"⛔ Неверный формат размера для перехода ПР: {size}")
 
-    width_top, height_top = map(int, parts[0].split('x'))
-    width_bottom, height_bottom = map(int, parts[1].split('x'))
-
-    # Длина фиксированная
-    length = 300
-
-    # Толщина
-    thickness = row["Толщина"]
-    if pd.isna(thickness) or thickness in ["", "None", "nan"]:
-        max_side = max(width_top, height_top, width_bottom, height_bottom)
-        thickness = get_thickness(max_side, max_side)
-    else:
-        thickness = str(thickness).replace(',', '.')
-    thickness = thickness.replace('.', ',')
-
-    # Кол-во
-    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-
-    # Тип
-    transition_type = row["Тип"]
-    if pd.isna(transition_type) or str(transition_type).strip() == "":
-        transition_type = "тип-1"
-
-    # Ед. изм.
-    unit = row["Ед. изм."]
-    if pd.isna(unit) or str(unit).strip() == "":
-        unit = "шт"
-
-    # Соединение
-    connection = "[30]" if max(width_top, height_top, width_bottom, height_bottom) >= 1000 else "[20]"
-
-    # Имя
-    name = f"Переход ПР {width_top}*{height_top}/{width_bottom}*{height_bottom} -{length} {transition_type} Оц.С/{thickness}/ {connection}"
-
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
-
-
-def process_perehod_pr_kr(row):
-    size = str(row["Размер"]).replace("х", "x").replace("*", "x").replace(" ", "").lower()
-    parts = size.split("/")
-    if len(parts) != 2:
-        raise ValueError(f"⛔ Неверный формат размера: {size}")
-    
-    # Определяем, какая часть прямоугольная, а какая круглая
-    if "x" in parts[0] and "x" not in parts[1]:
-        # Прямоугольник / Круг
-        width, height = map(int, parts[0].split('x'))
-        kr_diameter = int(parts[1].replace('d', '').replace('ф', '').replace('ø', ''))
-    elif "x" in parts[1] and "x" not in parts[0]:
-        # Круг / Прямоугольник — меняем местами
-        kr_diameter = int(parts[0].replace('d', '').replace('ф', '').replace('ø', ''))
-        width, height = map(int, parts[1].split('x'))
-    else:
-        raise ValueError(f"⛔ Не удалось определить прямоугольное и круглое сечение: {size}")
-
-    # Толщина
-    thickness = row["Толщина"]
-    if pd.isna(thickness) or thickness in ["None", "", "nan"]:
-        thickness = get_thickness(width, height)
-    else:
-        thickness = str(thickness).replace(',', '.')
-    thickness = thickness.replace('.', ',')
-
-    # Кол-во
-    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-
-    # Тип
-    transition_type = row["Тип"]
-    if pd.isna(transition_type) or str(transition_type).strip() == "":
-        transition_type = "тип-1"
-
-    # Ед. изм.
-    unit = row["Ед. изм."]
-    if pd.isna(unit) or str(unit).strip() == "":
-        unit = "шт"
-
-    # Соединение
-    connection = "[30]" if width >= 1000 or height >= 1000 else "[20]"
-
-    # Итоговое имя
-    name = f"Переход с ПР на КР {width}*{height}/d {kr_diameter} -300 {transition_type} Оц.С/{thickness}/ {connection}"
-
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
-
-
-
-
-
-def process_perehod_kr(row):
-    # Размеры: 125/315 → два диаметра
-    size = str(row["Размер"]).replace('d', '').replace('Ø', '').replace('ф', '').replace(' ', '')
-    parts = size.split('/')
-    if len(parts) != 2:
-        raise ValueError(f"Неверный формат размера для Переход КР: {size}")
-    
-    d1, d2 = map(int, parts)
-    d_small, d_large = sorted([d1, d2])
-
-    # Длина фиксированная
-    length = 300
-
-    # Толщина
-    thickness = row["Толщина"]
-    if pd.isna(thickness) or thickness in ["None", "", "nan"]:
-        thickness = get_thickness(d_large, d_large)
-    else:
-        thickness = str(thickness).replace(',', '.')
-    thickness = thickness.replace('.', ',')
-
-    # Кол-во
-    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-
-    # Ед. изм.
-    unit = row["Ед. изм."]
-    if pd.isna(unit) or str(unit).strip() == "":
-        unit = "шт"
-
-    # Тип
-    transition_type = row["Тип"]
-    if pd.isna(transition_type) or str(transition_type).strip() == "":
-        transition_type = "тип-1"
-
-    # Имя
-    name = f"Переход КР d {d_small}/{d_large} -{length} {transition_type} Оц.С/{thickness}/ [нп]"
-
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
-
-
-
-
-# ------------------- Врезка КР в КР трубу -------------------
-def process_vrezka_kr_v_kr(row):
-    size = str(row["Размер"]).replace('d', '').replace('ф', '').replace('Ø', '').replace(' ', '')
-    parts = size.split('/')
-    if len(parts) != 2:
-        raise ValueError(f"Неверный формат размера: {size}")
-    
-    # Упорядочим диаметр врезки и трубы
-    d1 = int(parts[0])
-    d2 = int(parts[1])
-    d_branch, d_main = sorted([d1, d2])  # врезка — меньший
-
-    # Толщина
-    thickness = row["Толщина"]
-    if pd.isna(thickness) or thickness in ["None", None, "", "nan"]:
-        thickness = get_thickness(d_branch, d_branch)
-    else:
-        thickness = str(thickness).replace(',', '.')
-    thickness = thickness.replace('.', ',')
-
-    # Кол-во
-    quantity = int(float(row["Кол-во"]))
-
-    # Ед. изм.
-    unit = row["Ед. изм."]
-    if pd.isna(unit) or str(unit).strip() == "":
-        unit = "шт"
-
-    # Финальное имя
-    name = f"Врезка КР в КР трубу d {d_branch}/{d_main} -100 Оц.С/{thickness}/"
-
-    return {
-        "Наименование": name,
-        "Кол-во": quantity,
-        "Ед. изм.": unit
-    }
 
 import re
 import math
@@ -785,17 +783,13 @@ def process_otvod(row):
 
 # Обновленный словарь handlers
 handlers = {
-    "врезка кр в кр трубу": process_vrezka_kr_v_kr,
+
     "труба": process_universal_pipe,
-    "переход кр": process_perehod_kr,
-    "переход пр на кр": process_perehod_pr_kr,
-    "переход пр": process_perehod_pr,
     "дроссель": process_drossel,
     "заглушка": process_zaglushka,
     "отвод": process_otvod, 
     "ниппель": process_nippel, 
     "дефлектор": process_deflector,
-    "врезка": process_vrezka_otbort,
     "шумоглушитель": process_shumoglushitel,
     "регулирующий клапан": process_regulyator_klapan,
     "пенофол": process_penofol,
@@ -803,7 +797,12 @@ handlers = {
     "озкс": process_ozks,
     "скотч": process_skotch,
     "тройник": process_troynik,
+    "врезка": process_vrezka,
+    "переход": process_perehod,
+    "диффузор": process_diffuzor
 }
+
+
 
 
 
@@ -852,8 +851,15 @@ def process_row_from_list(result)->list[dict]:
     # df_input.columns = ["Наименование", "Размер", "Толщина", "Кол-во", "Ед. изм.", "Угол", "Тип", "Длина"]
     # df_input.columns = ["Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол"]
 
-    processed_rows = df_input.apply(process_row, axis=1)
-    df_output = pd.DataFrame([r for r in processed_rows if r is not None])
+    processed_rows = []
+    for _, row in df_input.iterrows():
+        result = process_row(row)
+        if result is not None:
+            if isinstance(result, list):
+                processed_rows.extend(result)
+            else:
+                processed_rows.append(result)
+    df_output = pd.DataFrame(processed_rows)
 
     # from openpyxl.utils import get_column_letter
 
