@@ -818,6 +818,10 @@ def process_row(row):
     pprint(item_type)
     row['Кол-во']=1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
     print(row)
+    
+    if row['Толщина'] != '-':
+        row['Толщина']=str(round(float(str(row['Толщина']).replace(',', '.')), 1))  
+    
     if row['Толщина']=='1':
         row['Толщина']='1,0'
     if item_type in handlers:

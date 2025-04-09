@@ -72,9 +72,11 @@ class XLSXService:
             except Exception as e:
                 logger.error(f"Ошибка при чтении XLSX файла: {str(e)}")
                 raise ValueError(f"Не удалось прочитать XLSX файл: {str(e)}")
+            xlsx_content=xlsx_content.replace('NaN', '')
             logger.debug(f"Содержимое XLSX файла: {xlsx_content}")
 
             # Разбиваем содержимое на батчи по 50 строк
+            
             lines = xlsx_content.split('\n')
             batch_size = 50
             batches = ['\n'.join(lines[i:i+batch_size]) for i in range(0, len(lines), batch_size)]
