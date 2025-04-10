@@ -1088,7 +1088,7 @@ class PriceListService:
                 
                 pprint(batch)
                 # Получаем наименования для текущей пачки
-                names = [item.get("Наименование", "") + ' Количество:' + item.get("Количество", "") + ' Ед.изм.:' + item.get("Ед.изм.", "") for item in batch]
+                names = [item.get("Наименование", "") + ' Количество:' + str(item.get("Количество", "")) + ' Ед.изм.:' + str(item.get("Ед.изм.", "")) for item in batch]
 
                 # item_name = item.text
                     
