@@ -815,9 +815,9 @@ def process_row(row):
     """Обработка строки с учетом регистронезависимого определения типа"""
     item_type = str(row["Наименование"]).strip().lower()  # Переводим в нижний регистр
     
-    pprint(item_type)
+    # pprint(item_type)
     row['Кол-во']=1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
-    print(row)
+    # print(row)
     
     if row['Толщина'] != '-':
         row['Толщина']=str(round(float(str(row['Толщина']).replace(',', '.')), 1))  
@@ -848,7 +848,7 @@ def process_row_from_list(result)->list[dict]:
     from pprint import pprint
     # ------------------- Загрузка и обработка -------------------
     # df_input = pd.read_excel("ЗАЯВКА.xlsx")
-    pprint(result)
+    # pprint(result)
     res2=result.copy()
     list_of_dicts=[]
     for i in res2:
@@ -856,7 +856,7 @@ def process_row_from_list(result)->list[dict]:
         #Почему-то иногда приходит не в том порядке который нужнен и нименование сдвигается
         values=[i['Длина'], i['Ед. изм.'], i['Кол-во'], i['Наименование'], i['Размер'], i['Тип'], i['Толщина'], i['Угол']]
         list_of_dicts.append(values)
-    print(list_of_dicts)
+    # print(list_of_dicts)
     colums=["Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол"]
     df_input = pd.DataFrame(np.array(list_of_dicts), columns=colums)
     # df_input.columns = ["Наименование", "Размер", "Толщина", "Кол-во", "Ед. изм.", "Угол", "Тип", "Длина"]

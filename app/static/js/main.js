@@ -118,14 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const uploadType = uploadTypeSelect.value;
         const fileExt = file.name.split('.').pop().toLowerCase();
 
-        // Анимация прогресса (симуляция)
-        let progress = 0;
-        const progressInterval = setInterval(() => {
-            progress += Math.random() * 10;
-            if (progress > 90) progress = 90;
-            progressBar.style.width = `${progress}%`;
-        }, 300);
-
         try {
             // Отправляем файл на сервер
             const formData = new FormData();
@@ -137,19 +129,24 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 formData.append('file_type', fileExt);
             }
-
+            // Добавляем ID прогресс-бара в запрос
+            const progressBarId = document.getElementById('progress-bar').getAttribute('data-progress-id');
+            if (progressBarId) {
+                formData.append('progress_bar_id', progressBarId);
+            }
             // Используем единый URL для всех типов файлов
             const uploadUrl = '/api/documents/upload';
             console.log(`Sending file to ${uploadUrl}, type: ${fileExt}`);
-            
+
+            // Останавливаем текущий мониторинг прогресса, если есть
+            // stopProgressMonitoring();
+            // Запускаем мониторинг прогресса
+            const fileType = fileExt === 'xlsx' ? 'xlsx' : 'ocr';
+            startProgressMonitoring(progressBarId, fileType);
             const response = await fetch(uploadUrl, {
                 method: 'POST',
                 body: formData
             });
-
-            // Останавливаем анимацию прогресса
-            clearInterval(progressInterval);
-            progressBar.style.width = '100%';
 
             if (!response.ok) {
                 const errorData = await response.json();
@@ -163,11 +160,41 @@ document.addEventListener('DOMContentLoaded', () => {
             currentDocumentId = data.id;
             currentFilename = data.original_filename;
             
-            // Отображаем результаты
-            displayResults(data);
+            
+            
+            // Ждем завершения обработки
+            while (true) {
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                try {
+                    const statusResponse = await fetch(`/api/documents/${data.id}`);
+                    if (!statusResponse.ok) {
+                        throw new Error('Не удалось получить статус обработки');
+                    }
+                    
+                    const statusData = await statusResponse.json();
+                    if (statusData.status === 'completed') {
+                        // Обработка завершена
+                        stopProgressMonitoring();
+                        // Отображаем результаты
+                        displayResults(statusData);
+                        break;
+                    } else if (statusData.status === 'error') {
+                        // Произошла ошибка
+                        stopProgressMonitoring();
+                        throw new Error(statusData.error || 'Произошла ошибка при обработке документа');
+                    }
+                    // Иначе продолжаем ожидание
+                } catch (statusError) {
+                    console.error('Ошибка при проверке статуса:', statusError);
+                    // Продолжаем ожидание даже при ошибках запроса статуса
+                }
+            }
         } catch (error) {
             console.error('Error uploading file:', error);
             showError(error.message);
+            // Останавливаем мониторинг прогресса при ошибке
+            stopProgressMonitoring();
         } finally {
             // Скрываем загрузчик в любом случае
             setTimeout(() => {

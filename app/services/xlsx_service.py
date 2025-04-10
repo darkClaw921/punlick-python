@@ -26,6 +26,22 @@ class XLSXService:
             api_key=settings.MISTRAL_API_KEY, timeout_ms=300000
         )  # 5 минут
         self._results = {}  # Временное хранилище результатов
+        self.progress_bars = {}
+
+    def update_progress_bar(self, progress_bar_id: str, text: str, processed:int, total:int):
+        if progress_bar_id not in self.progress_bars:
+            self.progress_bars[progress_bar_id] = {
+                "text": text,
+                "processed": processed,
+                "total": total
+            }
+        else:
+            self.progress_bars[progress_bar_id]["text"] = text
+            self.progress_bars[progress_bar_id]["processed"] = processed
+            self.progress_bars[progress_bar_id]["total"] = total
+    
+    def get_progress_bar(self, progress_bar_id: str) -> dict:
+        return self.progress_bars.get(progress_bar_id, None)
 
     def prepare_text_anserw_to_dict(self, text: str) -> list:
         """
@@ -57,12 +73,12 @@ class XLSXService:
             return None
 
     async def process_xlsx_file(
-        self, file_path: str, original_filename: str
+        self, file_path: str, original_filename: str, progress_bar_id: str = None
     ) -> DocumentResponse:
         """Обработка XLSX файла с использованием Mistral API"""
         try:
-            logger.debug(f"Обработка XLSX файла: {original_filename}")
-
+            logger.debug(f"Обработка XLSX файла: {original_filename} {progress_bar_id}")
+            self.update_progress_bar(progress_bar_id, "Обработка XLSX файла", 10, 100)
             # Чтение данных из XLSX файла
             try:
                 df = pd.read_excel(file_path)
@@ -82,10 +98,16 @@ class XLSXService:
             batches = ['\n'.join(lines[i:i+batch_size]) for i in range(0, len(lines), batch_size)]
             logger.debug(f"Файл разбит на {len(batches)} батчей по {batch_size} строк")
             
-
+            self.update_progress_bar(progress_bar_id, f"Обработка батчей XLSX {len(batches)} по {batch_size} строк", 11, 100)
             all_products = []
+            index=1
+            max_percent_is_step=40
+            now_percent_step=self.progress_bars[progress_bar_id]['processed']
+            max_percent_step=max_percent_is_step - now_percent_step
+            percent_step=round(max_percent_step/len(batches),1)
+            logger.debug(f"percent_step: {percent_step}")
             for batch in tqdm(batches, desc="Обработка батчей XLSX"):
-                
+                self.update_progress_bar(progress_bar_id, f"Распознавание товаров из батча {index} из {len(batches)}", percent_step*index, 100)
                 messages = [
                     {
                         "role": "user",
@@ -124,24 +146,16 @@ class XLSXService:
                     ]
 
                 all_products.extend(products)
-
+                index+=1
             # Создаем уникальный ID для файла
             file_id = f"xlsx_{original_filename}"
 
-            # document_response = DocumentResponse(
-            #     id=file_id,
-            #     original_filename=original_filename,
-            #     items=[
-            #         DocumentItem(
-            #             text=item
-            #             if isinstance(item, str)
-            #             else json.dumps(item, ensure_ascii=False)
-            #         )
-            #         for item in all_products
-            #     ],
-            # )
+            
             price_list_service = PriceListService()
-            enriched_products = await price_list_service.find_matching_items(all_products)
+
+            enriched_products = await price_list_service.find_matching_items(items=all_products,
+                                                    progress_bars=self.progress_bars,
+                                                    progress_bar_id=progress_bar_id)
 
             document_response = DocumentResponse(
                 id=file_id,

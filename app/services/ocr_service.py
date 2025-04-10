@@ -33,7 +33,18 @@ class OCRService:
             
         )  # 5 минут
         self._results = {}  # Временное хранилище результатов
-
+        self.progress_bars = {}
+    
+    def update_progress_bar(self, progress_bar_id: str, text: str, processed:int, total:int):
+        self.progress_bars[progress_bar_id] = {
+            'text': text,
+            'processed': processed,
+            'total': total
+        }
+    
+    def get_progress_bar(self, progress_bar_id: str) -> dict:
+        return self.progress_bars.get(progress_bar_id, None)
+    
     def encode_image(self, image_path):
         """Encode the image to base64."""
         try:
@@ -46,17 +57,23 @@ class OCRService:
             print(f"Error: {e}")
             return None
 
-    async def send_mistral_document_batch(self, pages):
+    async def send_mistral_document_batch(self, pages, progress_bar_id: str = None):
         all_text = []
         count_pages = 0
+        self.update_progress_bar(progress_bar_id, "Получение товаров из документа ", 14, 100)
+        max_percent_is_step=90
+        now_percent_step=self.progress_bars[progress_bar_id]['processed']
+        max_percent_step=max_percent_is_step - now_percent_step
+        percent_step=round(max_percent_step/len(pages),1)
         for page in tqdm(
             pages, desc="Обработка страниц из документа (Mistral API)"
         ):
+            self.update_progress_bar(progress_bar_id, "Получение товаров из документа ", percent_step*count_pages, 100)
             if count_pages >= 20:
                 print(all_text)
                 return all_text
             
-            continue
+            # continue
             messages = [
                 {
                     "role": "user",
@@ -115,7 +132,7 @@ class OCRService:
             return None
 
     async def process_document(
-        self, file_path: str, original_filename: str, file_type: str = None
+        self, file_path: str, original_filename: str, file_type: str = None, progress_bar_id: str = None
     ) -> DocumentResponse:
         """Обработка документа или изображения с использованием Mistral API"""
         # try:
@@ -128,13 +145,16 @@ class OCRService:
                 file_type = DocumentType.PDF
             else:
                 file_type = DocumentType.PDF  # По умолчанию PDF
-
+        self.update_progress_bar(progress_bar_id, "Обработка документа", 10, 100)
         # Обработка в зависимости от типа файла
         if file_type == DocumentType.IMAGE:
-            return await self.process_image(file_path, original_filename)
+            return await self.process_image(file_path, original_filename, progress_bar_id)
 
         # Иначе обрабатываем как документ
         # Загрузка файла в Mistral
+        self.update_progress_bar(progress_bar_id, "Загрузка файла в Mistral", 11, 100)
+        
+        
         uploaded_file = await self._client.files.upload_async(
             file={
                 "file_name": original_filename,
@@ -143,11 +163,17 @@ class OCRService:
             purpose="ocr",
         )
         logger.debug(f"Загруженный файл: {uploaded_file}")
-        # Получение подписанного URL для доступа к файлу
+        self.update_progress_bar(progress_bar_id, "Получение подписанного URL для доступа к файлу", 12, 100)
+        #
+        # 
+        #  Получение подписанного URL для доступа к файлу
         signed_url = await self._client.files.get_signed_url_async(
             file_id=uploaded_file.id
         )
         logger.debug(f"Подписанный URL: {signed_url}")
+        
+        
+        self.update_progress_bar(progress_bar_id, "Обработка документа через OCR", 13, 100)
         # Обработка документа через OCR
         ocr_response = await self._client.ocr.process_async(
             model="mistral-ocr-latest",
@@ -159,7 +185,7 @@ class OCRService:
         )
 
         logger.debug(f"Обработанный документ: {ocr_response}")
-
+        self.update_progress_bar(progress_bar_id, "Обработка страниц из документа (Mistral API)", 14, 100)
         all_texts = await self.send_mistral_document_batch(ocr_response.pages)
         products = all_texts
         print(products)
@@ -197,9 +223,10 @@ class OCRService:
         #     raise
 
     async def process_image(
-        self, file_path: str, original_filename: str
+        self, file_path: str, original_filename: str, progress_bar_id: str = None
     ) -> DocumentResponse:
         """Обработка изображения с использованием Mistral API"""
+        self.update_progress_bar(progress_bar_id, "Загрузка изображения в Mistral", 10, 100)
         uploaded_pdf = await self._client.files.upload_async(
             file={
                 "file_name": original_filename,
@@ -208,10 +235,11 @@ class OCRService:
             purpose="ocr",
         )
         await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
+        self.update_progress_bar(progress_bar_id, "Получение подписанного URL для доступа к файлу", 11, 100)
         signed_url = await self._client.files.get_signed_url_async(
             file_id=uploaded_pdf.id
         )
-        
+        self.update_progress_bar(progress_bar_id, "Получение товаров из изображения", 12, 100)
         messages = [
             {
                 "role": "user",
@@ -236,7 +264,7 @@ class OCRService:
         products = self.prepare_text_anserw_to_dict(products)
         
         price_list_service = PriceListService()
-        products = await price_list_service.find_matching_items(products)
+        products = await price_list_service.find_matching_items(products, self.progress_bars, progress_bar_id)
 
             
 

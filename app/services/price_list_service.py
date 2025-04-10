@@ -17,6 +17,7 @@ from datetime import datetime
 
 from app.core.config import settings
 from app.models.document import PriceListResponse
+import math
 
 
 class PriceListService:
@@ -1058,7 +1059,7 @@ class PriceListService:
 
 
     @logger.catch
-    async def find_matching_items(self, items: List[Dict[str, Any]], similarity_threshold: float = 0.7) -> List[Dict[str, Any]]:
+    async def find_matching_items(self, items: List[Dict[str, Any]], progress_bars: Dict[str, Any], progress_bar_id: str = None) -> List[Dict[str, Any]]:
         """
         Поиск соответствий распознанных товаров в векторной базе и замена названий на эталонные
         
@@ -1076,15 +1077,26 @@ class PriceListService:
             # Результирующий список
             enriched_items = []
             
-            self.logger.info(f"Начало поиска соответствий для {len(items)} товаров с порогом {similarity_threshold * 100}%")
             
-            # Обработка по 25 элементов за итерацию
+            progress_bars[progress_bar_id]['text'] = "Поиск соответствий для " + str(len(items)) + " товаров"
+            progress_bars[progress_bar_id]['processed'] = 45
+            max_percent_is_step=90
+            now_percent_step=progress_bars[progress_bar_id]['processed']
+            max_percent_step=max_percent_is_step - now_percent_step
+            #
+            # Обработка по 17 элементов за итерацию
             batch_size = 17
+
+            percent_step=round(max_percent_step/math.ceil(len(items)/batch_size),1)
+            index=1
             for i in range(0, len(items), batch_size):
+                batch = items[i:i + batch_size]
+                progress_bars[progress_bar_id]['processed'] += percent_step
+                progress_bars[progress_bar_id]['text'] = f"Преобразование наименований товаров {i+1}-{i+len(batch)} из {len(items)}"
                 
                 # Получаем срез из максимум 15 элементов
-                batch = items[i:i + batch_size]
-                print(f"Обработка элементов {i+1}-{i+len(batch)} из {len(items)}")
+                
+                print(f"Преобразование наименований товаров {i+1}-{i+len(batch)} из {len(items)}")
                 
                 pprint(batch)
                 # Получаем наименования для текущей пачки
@@ -1153,11 +1165,12 @@ class PriceListService:
 
 
 
-                    
+                    index+=1
                     enriched_items.extend(prepare_anser)
                     
             
-            
+            progress_bars[progress_bar_id]['processed'] = 100
+            progress_bars[progress_bar_id]['text'] = "Обработка завершена"
             pprint(enriched_items)
             return enriched_items
             

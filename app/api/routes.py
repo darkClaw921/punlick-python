@@ -42,9 +42,9 @@ from app.services.xlsx_service import xlsx_service
 from app.services.price_list_service import price_list_service
 from app.services.rules_service import rules_service
 from chromaWork import ChromaWork
-
+from loguru import logger   
 router = APIRouter()
-logger = logging.getLogger(__name__)
+logger.add("logs/api.log", rotation="10 MB", format="{time} {level} {file}:{line} {message}", level="DEBUG")
 
 
 # Модель для запроса текстового сообщения
@@ -62,12 +62,15 @@ async def upload_document(
     file: UploadFile = File(...),
     file_type: str = Form(None),
     background_tasks: BackgroundTasks = None,
+    progress_bar_id: str = Form(None),
 ):
     """Загрузка и обработка документа или изображения"""
 
     start_time = time.time()
     client_host = request.client.host
-
+    # progress_bar_id = str(uuid.uuid4())
+    logger.info(f"Загрузка документа {file.filename} {progress_bar_id}")
+    print(f"Загрузка документа {file.filename} {progress_bar_id}")
     # Проверка расширения файла
     file_ext = file.filename.split(".")[-1].lower()
 
@@ -110,42 +113,22 @@ async def upload_document(
         # Обрабатываем документ или изображение
         if is_image:
             # Обработка изображения
-            result = await ocr_service.process_image(file_path, file.filename)
+            result = await ocr_service.process_image(file_path, file.filename, progress_bar_id)
             logger.info(f"Обработка изображения {file.filename} запущена")
         elif is_xlsx:
             # Обработка XLSX файла
+            logger.info(f"Обработка XLSX файла {file.filename} {progress_bar_id}")
             result = await xlsx_service.process_xlsx_file(
-                file_path, file.filename
+                file_path, file.filename, progress_bar_id
             )
             logger.info(f"Обработка XLSX файла {file.filename} запущена")
         else:
             # Обработка PDF документа
             result = await ocr_service.process_document(
-                file_path, file.filename
+                file_path, file.filename, progress_bar_id
             )
 
-        # # Обогащаем результаты данными из векторной базы
-        # if result and result.items:
-        #     # Устанавливаем порог сходства (можно настроить)
-        #     similarity_threshold = 0.7
-            
-        #     # Ищем соответствия в векторной базе данных
-        #     enriched_items = await price_list_service.find_matching_items(
-        #         result.items, similarity_threshold
-        #     )
-            
-        #     # Обновляем элементы в результате
-        #     result.items = enriched_items
-            
-        #     logger.info(
-        #         f"Обогащение результатов из векторной базы выполнено для {len(result.items)} элементов"
-        #     )
-
-        # processing_time = time.time() - start_time
-        # logger.info(
-        #     f"Обработка файла {file.filename} завершена за {processing_time:.2f} сек., распознано {len(result.items)} элементов"
-        # )
-
+        
         return result
 
     except Exception as e:
@@ -250,23 +233,7 @@ async def process_chat_message(message: ChatMessageRequest):
             message.text, message_id
         )
 
-        # # Обогащаем результаты данными из векторной базы
-        # if result and result.items:
-        #     # Устанавливаем порог сходства (можно настроить)
-        #     similarity_threshold = 0.7
-            
-        #     # Ищем соответствия в векторной базе данных
-        #     # enriched_items = await price_list_service.find_matching_items(
-        #     #     result.items, similarity_threshold
-        #     # )
-            
-        #     # Обновляем элементы в результате
-        #     # result.items = enriched_items
-            
-        #     logger.info(
-        #         f"Обогащение результатов чата из векторной базы выполнено для {len(result.items)} элементов"
-        #     )
-
+        
         processing_time = time.time() - start_time
         logger.info(
             f"Обработка текстового сообщения завершена за {processing_time:.2f} сек., распознано {len(result.items)} элементов"
@@ -792,3 +759,47 @@ async def perform_chroma_reindex(reindex_id: str):
             status["elapsed_time"] = "время неизвестно"
             
         _reindex_statuses[reindex_id] = status
+
+
+@router.get("/progress-bars/{progress_bar_id}")
+async def get_progress_bar(type_process: str, progress_bar_id: str):
+    """Получение прогресс-бара по ID"""
+    logger.debug(f"Получение прогресс-бара для {type_process} с ID {progress_bar_id}")
+    try:
+        if type_process == "xlsx":
+            progress_data = xlsx_service.get_progress_bar(progress_bar_id)
+        elif type_process in ["ocr", "image"]:
+            progress_data = ocr_service.get_progress_bar(progress_bar_id)
+        else:
+            raise HTTPException(status_code=400, detail=f"Неизвестный тип процесса: {type_process}")
+        
+        # Если сервис возвращает сырые данные прогресса, преобразуем их в стандартный формат
+        if not isinstance(progress_data, dict):
+            progress_data = {
+                "text": "Обработка документа...",
+                "processed": 0,
+                "total": 100,
+                "status": "processing"
+            }
+        
+        # Убедимся, что все необходимые поля существуют
+        if "text" not in progress_data:
+            progress_data["text"] = "Обработка документа..."
+        if "processed" not in progress_data:
+            progress_data["processed"] = 0
+        if "total" not in progress_data:
+            progress_data["total"] = 100
+        if "status" not in progress_data:
+            progress_data["status"] = "processing"
+            
+        return progress_data
+    except Exception as e:
+        logger.error(f"Ошибка при получении данных прогресса: {str(e)}")
+        return {
+            "text": f"Ошибка: {str(e)}",
+            "processed": 0,
+            "total": 100,
+            "status": "error"
+        }
+
+

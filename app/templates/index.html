@@ -186,9 +186,41 @@
                             </div>
                             <p class="mt-2" id="loading-text">Обработка документа...</p>
                             <div class="progress mt-3" style="height: 10px;">
-                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%" data-progress-id=""></div>
                             </div>
                         </div>
+                        <script>
+                            // Используем функцию для установки ID при загрузке страницы
+                            document.addEventListener('DOMContentLoaded', function() {
+                                const progressBar = document.getElementById('progress-bar');
+                                if (progressBar) {
+                                    progressBar.setAttribute('data-progress-id', crypto.randomUUID());
+                                }
+                                
+                                // Добавляем обработчик отправки формы
+                                const uploadForm = document.getElementById('upload-form');
+                                if (uploadForm) {
+                                    uploadForm.addEventListener('submit', function(e) {
+                                        e.preventDefault();
+                                        
+                                        const fileInput = document.getElementById('document-file');
+                                        if (fileInput && fileInput.files.length > 0) {
+                                            const progressId = document.getElementById('progress-bar').getAttribute('data-progress-id');
+                                            const uploadType = document.getElementById('upload-type').value;
+                                            
+                                            // Показываем индикатор загрузки
+                                            document.getElementById('loading').classList.remove('d-none');
+                                            
+                                            // Запускаем мониторинг прогресса
+                                            startProgressMonitoring(progressId, uploadType);
+                                            
+                                            // Далее здесь должен быть код отправки формы
+                                            // ...
+                                        }
+                                    });
+                                }
+                            });
+                        </script>
 
                         <!-- Результаты -->
                         <div id="results-card" class="card shadow mt-4 d-none">
@@ -560,8 +592,108 @@
     <!-- Custom JS -->
     <script src="/static/js/main.js"></script>
     
-    <!-- JS для работы с правилами -->
     <script>
+        // Глобальная переменная для хранения ID интервала
+        let progressUpdateInterval = null;
+        let progressBarId = null;
+        let fileType = null;
+
+        // Функция для обновления прогресс-бара
+        function updateProgressBar() {
+            if (!progressBarId || !fileType) return;
+            
+            fetch(`/api/progress-bars/${progressBarId}?type_process=${fileType}`)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Ошибка получения данных прогресса');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Обновляем текст
+                    const loadingText = document.getElementById('loading-text');
+                    if (loadingText) loadingText.textContent = data.text || 'Обработка...';
+                    
+                    // Вычисляем процент выполнения
+                    let percent = 0;
+                    if (data.total > 0) {
+                        percent = Math.floor((data.processed / data.total) * 100);
+                    }
+                    
+                    // Обновляем прогресс-бар
+                    const progressBar = document.getElementById('progress-bar');
+                    if (progressBar) {
+                        progressBar.style.width = `${percent}%`;
+                        progressBar.setAttribute('aria-valuenow', percent);
+                        progressBar.textContent = `${percent}%`;
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при обновлении прогресса:', error);
+                });
+        }
+
+        // Функция для начала мониторинга прогресса
+        function startProgressMonitoring(id, type) {
+            if (!id || !type) {
+                console.error('Не указан ID прогресса или тип файла');
+                return;
+            }
+            
+            progressBarId = id;
+            fileType = type;
+            
+            // Очищаем предыдущий интервал, если он существует
+            if (progressUpdateInterval) {
+                clearInterval(progressUpdateInterval);
+            }
+            
+            // Установка начального состояния прогресс-бара
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+                progressBar.setAttribute('aria-valuenow', 0);
+                progressBar.textContent = '0%';
+            }
+            
+            // Запускаем новый интервал (1000мс = 1 секунда)
+            progressUpdateInterval = setInterval(updateProgressBar, 5000);
+            
+            // Сразу вызываем функцию для первого обновления
+            updateProgressBar();
+            
+            // Показываем элемент загрузки
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) loadingElement.classList.remove('d-none');
+        }
+
+        // Функция для остановки мониторинга прогресса
+        function stopProgressMonitoring() {
+            if (progressUpdateInterval) {
+                clearInterval(progressUpdateInterval);
+                progressUpdateInterval = null;
+            }
+            progressBarId = null;
+            fileType = null;
+            
+            // Скрываем индикатор загрузки
+            const loadingElement = document.getElementById('loading');
+            if (loadingElement) {
+                loadingElement.classList.add('d-none');
+            }
+            
+            // Сбрасываем прогресс-бар
+            const progressBar = document.getElementById('progress-bar');
+            if (progressBar) {
+                progressBar.style.width = '0%';
+                progressBar.setAttribute('aria-valuenow', 0);
+                progressBar.textContent = '0%';
+                
+                // Генерируем новый ID для следующего использования
+                progressBar.setAttribute('data-progress-id', crypto.randomUUID());
+            }
+        }
+        
         // Функции для работы с тостами (уведомлениями)
         function showToast(message, type = 'info', autoHide = true) {
             const toastContainer = document.getElementById('toast-container');
