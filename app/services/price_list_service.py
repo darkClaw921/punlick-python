@@ -1079,14 +1079,17 @@ class PriceListService:
             self.logger.info(f"Начало поиска соответствий для {len(items)} товаров с порогом {similarity_threshold * 100}%")
             
             # Обработка по 25 элементов за итерацию
-            batch_size = 25
+            batch_size = 17
             for i in range(0, len(items), batch_size):
+                
                 # Получаем срез из максимум 15 элементов
                 batch = items[i:i + batch_size]
                 print(f"Обработка элементов {i+1}-{i+len(batch)} из {len(items)}")
                 
+                pprint(batch)
                 # Получаем наименования для текущей пачки
-                names = [item.get("Наименование", "") for item in batch]
+                names = [item.get("Наименование", "") + ' Количество:' + item.get("Количество", "") + ' Ед.изм.:' + item.get("Ед.изм.", "") for item in batch]
+
                 # item_name = item.text
                     
                 # Если имя товара не пустое, ищем совпадения в базе
@@ -1104,7 +1107,7 @@ class PriceListService:
                         {"role": "user", "content": f'верни правильное наименование для: {names} в формате json список с полями "Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол" '}
                     ]
 
-                    print(messages)
+                    # print(messages)
                     response = await self.mistral_client.chat.complete_async(
                         model="mistral-small-latest",
                         messages=messages,

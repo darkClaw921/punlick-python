@@ -31,7 +31,7 @@ class ExportService:
 
         # Добавляем заголовок
         sheet["A1"] = "Название"
-        sheet["B1"] = "Количество"
+        sheet["B1"] = "Кол-во"
         sheet["C1"] = "Ед. изм."
 
         # Форматирование заголовков
@@ -49,8 +49,8 @@ class ExportService:
 
                 # Записываем данные в соответствующие ячейки
                 sheet[f"A{row_num}"] = product_data.get("Наименование", "")
-                sheet[f"B{row_num}"] = product_data.get("Количество", "")
-                sheet[f"C{row_num}"] = product_data.get("Ед.изм.", "")
+                sheet[f"B{row_num}"] = product_data.get("Кол-во", "")
+                sheet[f"C{row_num}"] = product_data.get("Ед. изм.", "")
             except (json.JSONDecodeError, AttributeError):
                 # Если не удалось распарсить как JSON, записываем весь текст в первую колонку
                 sheet[f"A{row_num}"] = item.text
