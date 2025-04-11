@@ -190,11 +190,20 @@
                             </div>
                         </div>
                         <script>
+                            // Функция для генерации UUID
+                            function generateUUID() {
+                                return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                                    var r = Math.random() * 16 | 0,
+                                        v = c == 'x' ? r : (r & 0x3 | 0x8);
+                                    return v.toString(16);
+                                });
+                            }
+
                             // Используем функцию для установки ID при загрузке страницы
                             document.addEventListener('DOMContentLoaded', function() {
                                 const progressBar = document.getElementById('progress-bar');
                                 if (progressBar) {
-                                    progressBar.setAttribute('data-progress-id', crypto.randomUUID());
+                                    progressBar.setAttribute('data-progress-id', generateUUID());
                                 }
                                 
                                 // Добавляем обработчик отправки формы
@@ -690,7 +699,7 @@
                 progressBar.textContent = '0%';
                 
                 // Генерируем новый ID для следующего использования
-                progressBar.setAttribute('data-progress-id', crypto.randomUUID());
+                progressBar.setAttribute('data-progress-id', generateUUID());
             }
         }
         
