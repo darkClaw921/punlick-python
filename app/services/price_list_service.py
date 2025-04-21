@@ -1077,8 +1077,10 @@ class PriceListService:
             # Результирующий список
             enriched_items = []
             
-            
-            progress_bars[progress_bar_id]['text'] = "Поиск соответствий для " + str(len(items)) + " товаров"
+            try: 
+                progress_bars[progress_bar_id]['text'] = "Поиск соответствий для " + str(len(items)) + " товаров"
+            except:
+                progress_bars.setdefault(progress_bar_id, {'text': "Поиск соответствий для " + str(len(items)) + " товаров", 'processed': 45, 'total': 100})
             progress_bars[progress_bar_id]['processed'] = 45
             max_percent_is_step=90
             now_percent_step=progress_bars[progress_bar_id]['processed']

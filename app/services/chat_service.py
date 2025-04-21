@@ -24,7 +24,19 @@ class ChatService:
             api_key=settings.MISTRAL_API_KEY, timeout_ms=300000
         )  # 5 минут
         self._results = {}  # Временное хранилище результатов
+        self.progress_bars = {}
 
+    
+    def update_progress_bar(self, progress_bar_id: str, text: str, processed:int, total:int):
+        self.progress_bars[progress_bar_id] = {
+            'text': text,
+            'processed': processed,
+            'total': total
+        }
+    
+    def get_progress_bar(self, progress_bar_id: str) -> dict:
+        return self.progress_bars.get(progress_bar_id, None)
+    
     def prepare_text_anserw_to_dict(self, text: str) -> list:
         """
         Извлекает список товаров из текста, содержащего JSON-блок
@@ -55,12 +67,12 @@ class ChatService:
             return None
 
     async def process_chat_message(
-        self, message_text: str, message_id: str
+        self, message_text: str, message_id: str, 
     ) -> DocumentResponse:
         """Обработка текстового сообщения из чата"""
         
         from chromaWork import ChromaWork
-        
+        self.update_progress_bar(message_id, "Распознование позиций из текстового сообщения", 0, 100)
         try:
             logger.debug(f"Обработка текстового сообщения: {message_text}")
 
@@ -81,15 +93,15 @@ class ChatService:
             chat_response = await self._client.chat.complete_async(
                 model="mistral-large-latest", messages=messages
             )
-
+            
             # Получаем содержимое ответа
             text = chat_response.choices[0].message.content
             logger.debug(f"Полученный ответ от API: {text}")
             text = self.prepare_text_anserw_to_dict(text)
-            
+            self.update_progress_bar(message_id, "Переименование позиций", 20, 100)
             price_list_service = PriceListService()
-            products = await price_list_service.find_matching_items(text)
-
+            products = await price_list_service.find_matching_items(text, self.progress_bars, message_id)
+            # self.update_progress_bar(message_id, "Обработка текстового сообщения", 20, 100)
             document_response = DocumentResponse(
                 id=message_id,
                 original_filename=f"chat_message_{message_id}",

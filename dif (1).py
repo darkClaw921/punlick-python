@@ -1,6 +1,4 @@
 import math
-import traceback
-import numpy as np
 import pandas as pd
 
 def normalize_thickness(th):
@@ -8,7 +6,6 @@ def normalize_thickness(th):
     if pd.isna(th) or str(th).strip().lower() in ["", "none", "nan"]:
         return th
     th = str(th).replace(',', '.').strip()
-
     if th == "0.55":
         th = "0.5"
     elif th == "0.6":
@@ -30,8 +27,7 @@ def process_skotch(row):
 
 def process_diffuzor(row):
     size = str(row["Размер"]).strip().lower().replace('x', 'х')  # <-- русская "х" везде
-    
-    quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+    quantity = int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1
     unit = row["Ед. изм."] if not pd.isna(row["Ед. изм."]) else "шт"
 
     if '450х450' in size:
@@ -177,10 +173,10 @@ def process_vrezka(row):
         else:
             diameter = int(size)
             name = f"Врезка с отборт КР d {diameter} {mark}/{thickness}/"
-    count = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+
     return {
         "Наименование": name,
-        "Кол-во": count,
+        "Кол-во": int(float(row["Кол-во"])) if pd.notna(row["Кол-во"]) else 1,
         "Ед. изм.": row["Ед. изм."] if pd.notna(row["Ед. изм."]) else "шт"
     }
 
@@ -200,8 +196,7 @@ def process_troynik(row):
     size = str(row["Размер"]).lower().replace("х", "x").replace("*", "x").replace(" ", "")
     parts = size.split('/')
 
-    # quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-    quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+    quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
     unit = row["Ед. изм."] or "шт"
 
     # --- Тройник ПР с КР врезкой ---
@@ -271,8 +266,7 @@ def process_troynik(row):
         depth = 100
         thickness = row["Толщина"] or get_thickness(w1, h1)
         thickness = normalize_thickness(thickness)
-        # quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-        quantity = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+        quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
         unit = row["Ед. изм."] or "шт"
         connection = "[30]" if max(w1, h1, w2, h2, w3, h3) >= 1000 else "[20]"
         name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
@@ -291,7 +285,6 @@ def process_troynik(row):
         thickness = row["Толщина"] or get_thickness(w1, h1)
         thickness = normalize_thickness(thickness)
         quantity = int(float(row["Кол-во"])) if not pd.isna(row["Кол-во"]) else 1
-        
         unit = row["Ед. изм."] or "шт"
         connection = "[30]" if max(w1, h1, w2, h2) >= 1000 else "[20]"
         name = f"Тройник ПР {w1}*{h1}/{w2}*{h2}/{w3}*{h3} -{length} -{depth} Оц.С/{thickness}/ {connection}"
@@ -588,8 +581,8 @@ def process_drossel_pr(row):
     width, height = map(int, size.split("x"))
 
     # Толщина
-    # thickness = row["Толщина"] 
-    if pd.isna(row["Толщина"] ) or row["Толщина"]  in ["", "None", "nan"]:
+    thickness = row["Толщина"]
+    if pd.isna(thickness) or thickness in ["", "None", "nan"]:
         thickness = get_thickness(width, height)
     else:
         thickness = str(thickness).replace(",", ".")
@@ -686,8 +679,8 @@ def process_vozduh_pr(row, size):
     """Обрабатывает Воздуховод ПР."""
     size_clean = size.lower().replace('х', '*').replace('x', '*').replace(' ', '')
     width, height = map(int, sorted(map(int, size_clean.split('*')), reverse=True))
-   
-    if (pd.isna(row["Толщина"]) or row['Толщина']=='-'):
+    
+    if pd.isna(row["Толщина"]):
         thickness = get_thickness(width, height)
     else:
         thickness = row["Толщина"]
@@ -723,20 +716,18 @@ def process_otvod(row):
         if any(sym in size for sym in ['x', 'х', '*']):
             size_clean = size.replace('*', 'x').replace('х', 'x')
             width, height = map(int, size_clean.split('x'))
-        
+
             if pd.isna(row["Толщина"]) or str(row["Толщина"]).strip().lower() in ["", "none", "nan"]:
                 thickness = get_thickness(width, height)
-
             else:
                 thickness = str(row["Толщина"]).replace(',', '.')
             thickness = thickness.replace('.', ',')
 
             connection = "[30]" if max(width, height) >= 1000 else "[20]"
-            count = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+
             return {
                 "Наименование": f"Отвод ПР {width}*{height}-90° шейка 50*50 Оц.С/{thickness}/ {connection}",
-                # "Кол-во": int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1,
-                "Кол-во": count,
+                "Кол-во": int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1,
                 "Ед. изм.": "шт"
             }
 
@@ -768,21 +759,16 @@ def process_otvod(row):
                 thickness = get_thickness(kr_diameter, kr_diameter) if pd.isna(row["Толщина"]) else row["Толщина"]
 
             thickness = str(thickness).replace(',', '.').replace('.', ',')
-            count = 1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
+
             return {
                 "Наименование": f"Отвод КР d {kr_diameter}-{angle}° R-150 Оц.С/{thickness}/ [нп] {manufacturer}",
-                "Кол-во": count,
+                "Кол-во": int(float(str(row["Кол-во"]).replace(',', '.'))) if not pd.isna(row["Кол-во"]) else 1,
                 "Ед. изм.": "шт"
             }
 
     except Exception as e:
-        print(f"Ошибка обработки отвода: {e}. Строка: {traceback.format_exc()}")
-        
-        return {
-            "Наименование": f"❌ Ошибка при обработке отвода: {e}. Строка: {row}",
-            "Кол-во": 1,
-            "Ед. изм.": "-"
-        }
+        print(f"Ошибка обработки отвода: {e}. Строка: {row}")
+        return None
 
 
 
@@ -809,257 +795,57 @@ handlers = {
 
 
 
-
-
 # ------------------- Основная логика -------------------
 def process_row(row):
-    from pprint import pprint
     """Обработка строки с учетом регистронезависимого определения типа"""
+    print (row["Толщина"]) 
+    
+    if pd.isna(row['Толщина']):
+        row['Толщина']=None
+    
     item_type = str(row["Наименование"]).strip().lower()  # Переводим в нижний регистр
-    
-    # pprint(item_type)
-    row['Кол-во']=1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
-    # print(row)
-    
-    if row['Толщина'] != '-':
-        row['Толщина']=str(round(float(str(row['Толщина']).replace(',', '.')), 1))  
-    
-
-    if row['Толщина']=='1':
-        row['Толщина']='1,0'
-
-    # if =='-':
-    
-    if row['Толщина'] in ['0.6', '0.60', '0,6', '0,60']:
-        row['Толщина']='0.5'
-
-    if row['Толщина'] in ["", "None", "nan",'-','NaN', None, ' ']:
-        row['Толщина']=None 
-
     if item_type in handlers:
-        try:
-            return handlers[item_type](row)
-        except Exception as e:
-
-            print(f"❌ Ошибка при обработке {item_type}: {e}, {traceback.format_exc()}")
-            return {
-                "Наименование": f"❌ Ошибка при обработке {item_type}: {e}, {traceback.format_exc()}",
-                "Кол-во": 1,
-                "Ед. изм.": "-"
-            }
+        return handlers[item_type](row)
     else:
         print(f"❌ Неизвестный тип: {item_type}")
-        return {
-            "Наименование": f"❌ Неизвестный тип: {item_type}",
-            "Кол-во": 1,
-            "Ед. изм.": "-"
-        }
+        return None
 
 
-def process_row_from_list(result)->list[dict]:
-    from pprint import pprint
-    # ------------------- Загрузка и обработка -------------------
-    # df_input = pd.read_excel("ЗАЯВКА.xlsx")
-    # pprint(result)
-    res2=result.copy()
-    list_of_dicts=[]
-    for i in res2:
-        # list_of_dicts.append(list(i.values()))
-        #Почему-то иногда приходит не в том порядке который нужнен и нименование сдвигается
-        values=[i['Длина'], i['Ед. изм.'], i['Кол-во'], i['Наименование'], i['Размер'], i['Тип'], i['Толщина'], i['Угол']]
-        list_of_dicts.append(values)
-    # print(list_of_dicts)
-    colums=["Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол"]
-    df_input = pd.DataFrame(np.array(list_of_dicts), columns=colums)
-    # df_input.columns = ["Наименование", "Размер", "Толщина", "Кол-во", "Ед. изм.", "Угол", "Тип", "Длина"]
-    # df_input.columns = ["Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол"]
+# ------------------- Загрузка и обработка -------------------
+df_input = pd.read_excel("ЗАЯВКА.xlsx")
+df_input.columns = ["Наименование", "Размер", "Толщина", "Кол-во", "Ед. изм.", "Угол", "Тип", "Длина"]
 
-    processed_rows = []
-    for _, row in df_input.iterrows():
-        result = process_row(row)
-        row.isna
-        if result is not None:
-            if isinstance(result, list):
-                processed_rows.extend(result)
-            else:
-                processed_rows.append(result)
-    df_output = pd.DataFrame(processed_rows)
+processed_rows = []
+
+for _, row in df_input.iterrows():
+    result = process_row(row)
+    if result is None:
+        continue
+    elif isinstance(result, list):
+        processed_rows.extend(result)
+    else:
+        processed_rows.append(result)
+
+df_output = pd.DataFrame(processed_rows)
+
+
+from openpyxl.utils import get_column_letter
+
+# Сохраняем результат с автошириной колонок
+with pd.ExcelWriter("РЕЗУЛЬТАТ.xlsx", engine="openpyxl") as writer:
+    df_output.to_excel(writer, index=False)
     
-    # from openpyxl.utils import get_column_letter
+    # Получаем ссылку на Excel-лист
+    worksheet = writer.sheets["Sheet1"]
 
+    # Автоширина по содержимому
+    for i, column in enumerate(df_output.columns, 1):
+        max_length = max(
+            df_output[column].astype(str).map(len).max(),
+            len(column)
+        )
+        worksheet.column_dimensions[get_column_letter(i)].width = max_length + 2
+print("✅ Обработка завершена.")
 
-    # возвращаем в формате dict с полями 'Наименование', 'Ед.изм.', 'Количество'
-    # pprint(df_output)
-    return df_output.to_dict(orient="records")
-    
-
-
-
-    # # Сохраняем результат с автошириной колонок
-    # with pd.ExcelWriter("РЕЗУЛЬТАТ.xlsx", engine="openpyxl") as writer:
-    #     df_output.to_excel(writer, index=False)
-        
-    #     # Получаем ссылку на Excel-лист
-    #     worksheet = writer.sheets["Sheet1"]
-
-    #     # Автоширина по содержимому
-    #     for i, column in enumerate(df_output.columns, 1):
-    #         max_length = max(
-    #             df_output[column].astype(str).map(len).max(),
-    #             len(column)
-    #         )
-    #         worksheet.column_dimensions[get_column_letter(i)].width = max_length + 2
-    # print("✅ Обработка завершена.")
-
-    # import os
-    # os.startfile("РЕЗУЛЬТАТ.xlsx")
-# Вентилятор канальный круглого сечения D125, расход 75 м³/4, напор 100Та 1 шт Пластиковый 
-# диффузор вытяжной Ø125 2 шт 
-# Воздуховод из тонколистовой оцинкованной стали 100х150, b=0,8 55 M 
-# Воздуховод круглого сечения из тонколистовой оцинкованной стали Ø125, b=0,8 15 M 
-# Отвод круглого воздуховода 90° Ø125, b=0,8 5 шт 
-# Отвод прямоугольного воздуховода 90° 100×150, b=0,8 1 шт 
-# Отвод прямоугольного воздуховода 90° 150×100, b=0,8 1 шт
-if __name__ == "__main__":  
-    from pprint import pprint
-    result = [{'Длина': '1000',
-  'Ед. изм.': 'шт',
-  'Кол-во': '2',
-  'Наименование': 'Шумоглушитель',
-  'Размер': '1200x600',
-  'Тип': '-',
-  'Толщина': '-',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Заглушка',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '6',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '20',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '20',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '1',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '9',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '4',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '12',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'м',
-  'Кол-во': '28',
-  'Наименование': 'Труба',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,9',
-  'Угол': '-'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,5',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '2',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,9',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,8',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Отвод',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,9',
-  'Угол': '90'},
- {'Длина': '-',
-  'Ед. изм.': 'шт',
-  'Кол-во': '1',
-  'Наименование': 'Врезка',
-  'Размер': '-',
-  'Тип': '-',
-  'Толщина': '0,5',
-  'Угол': '-'}]
-    
-    pprint(process_row_from_list(result))
-
-
-
+import os
+os.startfile("РЕЗУЛЬТАТ.xlsx")

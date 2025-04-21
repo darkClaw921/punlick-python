@@ -227,7 +227,7 @@ async def process_chat_message(message: ChatMessageRequest):
         message_id = str(uuid.uuid4())
 
         start_time = time.time()
-
+        chat_service.update_progress_bar(message_id, "Обработка текстового сообщения", 0, 100)
         # Обрабатываем сообщение
         result = await chat_service.process_chat_message(
             message.text, message_id
@@ -770,6 +770,8 @@ async def get_progress_bar(type_process: str, progress_bar_id: str):
             progress_data = xlsx_service.get_progress_bar(progress_bar_id)
         elif type_process in ["ocr", "image"]:
             progress_data = ocr_service.get_progress_bar(progress_bar_id)
+        elif type_process == "chat":
+            progress_data = chat_service.get_progress_bar(progress_bar_id)
         else:
             raise HTTPException(status_code=400, detail=f"Неизвестный тип процесса: {type_process}")
         
