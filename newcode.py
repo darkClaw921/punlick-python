@@ -821,20 +821,19 @@ def process_row(row):
     row['Кол-во']=1 if row['Кол-во']=='-' else int(float(str(row["Кол-во"]).replace(',', '.')))
     # print(row)
     
-    if row['Толщина'] != '-':
-        row['Толщина']=str(round(float(str(row['Толщина']).replace(',', '.')), 1))  
-    
-
+      
     if row['Толщина']=='1':
         row['Толщина']='1,0'
-
-    # if =='-':
-    
-    if row['Толщина'] in ['0.6', '0.60', '0,6', '0,60']:
+    elif row['Толщина'] in ['0.6', '0.60', '0,6', '0,60']:
         row['Толщина']='0.5'
 
-    if row['Толщина'] in ["", "None", "nan",'-','NaN', None, ' ']:
+    elif row['Толщина'] in ["", "None", "nan",'-','NaN', None, ' ']:
         row['Толщина']=None 
+    else:
+        row['Толщина']=str(round(float(str(row['Толщина']).replace(',', '.')), 1))
+
+
+
 
     if item_type in handlers:
         try:

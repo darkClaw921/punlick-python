@@ -91,10 +91,10 @@ class XLSXService:
             xlsx_content=xlsx_content.replace('NaN', '')
             logger.debug(f"Содержимое XLSX файла: {xlsx_content}")
 
-            # Разбиваем содержимое на батчи по 50 строк
+            # Разбиваем содержимое на батчи по 30 строк
             
             lines = xlsx_content.split('\n')
-            batch_size = 50
+            batch_size = 30
             batches = ['\n'.join(lines[i:i+batch_size]) for i in range(0, len(lines), batch_size)]
             logger.debug(f"Файл разбит на {len(batches)} батчей по {batch_size} строк")
             
@@ -106,6 +106,7 @@ class XLSXService:
             max_percent_step=max_percent_is_step - now_percent_step
             percent_step=round(max_percent_step/len(batches),1)
             logger.debug(f"percent_step: {percent_step}")
+            
             for batch in tqdm(batches, desc="Обработка батчей XLSX"):
                 self.update_progress_bar(progress_bar_id, f"Распознавание товаров из батча {index} из {len(batches)}", percent_step*index, 100)
                 messages = [
