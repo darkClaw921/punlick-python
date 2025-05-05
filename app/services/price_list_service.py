@@ -1141,7 +1141,7 @@ class PriceListService:
                     # )
 
                     # response = await llm.chat_completion(messages=messages, model="gpt-4.1-nano-2025-04-14")
-                    response = await llm.chat_completion(messages=messages, model="gpt-4o-mini")
+                    response = await llm.chat_completion(messages=messages)
                     # pprint(response)
                     text=response['text']
                     answer = self.prepare_text_anserw_to_dict(text)

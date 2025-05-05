@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     )
     
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     # Настройки загрузки файлов
     UPLOAD_DIR: str = (
         "/Users/igorgerasimov/cursorWorkspace/punlick-python/uploads"

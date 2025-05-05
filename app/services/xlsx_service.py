@@ -147,7 +147,8 @@ class XLSXService:
 
                 # # Получаем содержимое ответа
                 # text = chat_response.choices[0].message.content
-                response = await llm.chat_completion(messages=messages, model='gpt-4.1-nano-2025-04-14')
+                # response = await llm.chat_completion(messages=messages, model='gpt-4.1-nano-2025-04-14')
+                response = await llm.chat_completion(messages=messages)
                 text=response['text']
 
                 logger.debug(f"Полученный ответ от API: {text}")

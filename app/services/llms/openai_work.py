@@ -7,7 +7,8 @@ from app.services.llms.llm_work import LLMWork
 from app.core.config import settings
 
 # MODEL="gpt-4.1-nano-2025-04-14"
-MODEL="gpt-4o-mini"
+# MODEL="gpt-4o-mini"
+MODEL=settings.OPENAI_MODEL
 class OpenAIWork(LLMWork):
     """
     Реализация работы с OpenAI API
