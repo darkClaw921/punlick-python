@@ -2,6 +2,7 @@ import base64
 import json
 import re
 from typing import Optional
+import uuid
 from loguru import logger
 from mistralai import Mistral
 
@@ -9,7 +10,10 @@ from app.services.price_list_service import PriceListService
 
 from app.core.config import settings
 from app.models.document import DocumentResponse, DocumentItem, DocumentType
+from app.services.llms.llm_factory import LLMFactory
 
+openai_llm = LLMFactory.get_instance("openai")
+llm = openai_llm
 # from ..core.config import settings
 # from ..models.document import DocumentResponse, DocumentItem
 from tqdm import tqdm
@@ -88,12 +92,15 @@ class OCRService:
             ]
             # logger.debug(f"Сообщения для API: {messages}")
             # Get the chat response
-            chat_response = await self._client.chat.complete_async(
-                model="mistral-large-latest", messages=messages, max_tokens=40000
-            )
+            # chat_response = await self._client.chat.complete_async(
+            #     model="mistral-large-latest", messages=messages, max_tokens=40000
+            # )
 
-            # Print the content of the response
-            text = chat_response.choices[0].message.content
+            # # Print the content of the response
+            # text = chat_response.choices[0].message.content
+
+            response = await llm.chat_completion(messages=messages)
+            text=response['text']
             prepared_text = self.prepare_text_anserw_to_dict(text)
             logger.debug(f"Обработанная страница: {prepared_text}")
             if prepared_text:
@@ -115,11 +122,15 @@ class OCRService:
         try:
             # Ищем JSON-блок между ```json и ```
             json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-
+            
+            # Если не нашли в формате ```json```, пробуем найти просто JSON в тексте
             if not json_match:
-                raise ValueError("JSON-блок не найден в тексте")
-
-            json_str = json_match.group(1)
+                # Пробуем найти JSON-массив в тексте напрямую
+                text=text.replace("'",'"')
+                data=json.loads(text)
+                return data
+                
+            json_str = json_match.group(0) if not json_match.groups() else json_match.group(1)
             data = json.loads(json_str)
 
             if not isinstance(data, list):
@@ -227,49 +238,55 @@ class OCRService:
     ) -> DocumentResponse:
         """Обработка изображения с использованием Mistral API"""
         self.update_progress_bar(progress_bar_id, "Загрузка изображения в Mistral", 10, 100)
-        uploaded_pdf = await self._client.files.upload_async(
-            file={
-                "file_name": original_filename,
-                "content": open(file_path, "rb"),
-            },
-            purpose="ocr",
-        )
-        await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
+        
+        # uploaded_pdf = await self._client.files.upload_async(
+        #     file={
+        #         "file_name": original_filename,
+        #         "content": open(file_path, "rb"),
+        #     },
+        #     purpose="ocr",
+        # )
+        # await self._client.files.retrieve_async(file_id=uploaded_pdf.id)
         self.update_progress_bar(progress_bar_id, "Получение подписанного URL для доступа к файлу", 11, 100)
-        signed_url = await self._client.files.get_signed_url_async(
-            file_id=uploaded_pdf.id
-        )
+        # signed_url = await self._client.files.get_signed_url_async(
+        #     file_id=uploaded_pdf.id
+        # )
         self.update_progress_bar(progress_bar_id, "Получение товаров из изображения", 12, 100)
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": 'найди все позиции и верни их в виде списка в формате json "Наименование": наиминование, "Количество": количество, "Ед.изм.": ед.изм. даже если это 1 элемент то верни 1 элемент' ,
-                    },
-                    {"type": "image_url", "image_url": signed_url.url},
-                ],
-            }
-        ]
+        # messages = [
+        #     {
+        #         "role": "user",
+        #         "content": [
+        #             {
+        #                 "type": "text",
+        #                 "text": 'найди все позиции и верни их в виде списка в формате json "Наименование": наиминование, "Количество": количество, "Ед.изм.": ед.изм. даже если это 1 элемент то верни 1 элемент' ,
+        #             },
+        #             {"type": "image_url", "image_url": signed_url.url},
+        #         ],
+        #     }
+        # ]
 
         # Get the chat response
-        chat_response = await self._client.chat.complete_async(
-            model="pixtral-12b-2409", messages=messages
-        )
+        # chat_response = await self._client.chat.complete_async(
+        #     model="pixtral-12b-2409", messages=messages
+        # )
 
-        # Print the content of the response
-        products = chat_response.choices[0].message.content
-        logger.debug(f"Полученный ответ от API: {products}")
-        products = self.prepare_text_anserw_to_dict(products)
+        # # Print the content of the response
+        # products = chat_response.choices[0].message.content
+        prompt="найди все позиции и верни их в виде списка в формате json 'Наименование': наименование, 'Количество': количество, 'Ед.изм.': ед.изм. даже если это 1 элемент то верни 1 элемент"
+        response = await llm.image_to_text(file_path, prompt)
+        text=response['text']
+
+
+        logger.debug(f"Полученный ответ от API: {text}")
+        products = self.prepare_text_anserw_to_dict(text)
         
         price_list_service = PriceListService()
         products = await price_list_service.find_matching_items(products, self.progress_bars, progress_bar_id)
 
             
-
+        documentID_UUID=uuid.uuid4().hex
         document_response = DocumentResponse(
-        id=uploaded_pdf.id,
+        id=documentID_UUID,
         original_filename=original_filename,
         items=[
             DocumentItem(
@@ -282,7 +299,7 @@ class OCRService:
         )
 
         # Сохранение результата
-        self._results[uploaded_pdf.id] = document_response
+        self._results[documentID_UUID] = document_response
 
         return document_response
 

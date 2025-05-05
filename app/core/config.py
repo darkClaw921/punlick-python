@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     MISTRAL_LLM_MODEL: str = os.getenv(
         "MISTRAL_LLM_MODEL", "mistral-small-latest"
     )
-
+    
+    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
     # Настройки загрузки файлов
     UPLOAD_DIR: str = (
         "/Users/igorgerasimov/cursorWorkspace/punlick-python/uploads"

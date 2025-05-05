@@ -9,6 +9,10 @@ from tqdm import tqdm
 from app.core.config import settings
 from app.models.document import DocumentResponse, DocumentItem
 from app.services.price_list_service import PriceListService
+from app.services.llms.llm_factory import LLMFactory
+
+openai_llm = LLMFactory.get_instance("openai")
+llm = openai_llm
 
 logger.add(
     "xlsx_service.log",
@@ -58,7 +62,10 @@ class XLSXService:
             json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
 
             if not json_match:
-                raise ValueError("JSON-блок не найден в тексте")
+                # Пробуем найти JSON-массив в тексте напрямую
+                text=text.replace("'",'"')
+                data=json.loads(text)
+                return data
 
             json_str = json_match.group(1)
             data = json.loads(json_str)
@@ -89,7 +96,7 @@ class XLSXService:
                 logger.error(f"Ошибка при чтении XLSX файла: {str(e)}")
                 raise ValueError(f"Не удалось прочитать XLSX файл: {str(e)}")
             xlsx_content=xlsx_content.replace('NaN', '')
-            logger.debug(f"Содержимое XLSX файла: {xlsx_content}")
+            logger.debug(f"Содержимое XLSX файла: \n{xlsx_content}")
 
             # Разбиваем содержимое на батчи по 30 строк
             
@@ -115,7 +122,18 @@ class XLSXService:
                         "content": [
                             {
                                 "type": "text",
-                                "text": """найди все товары и верни их в виде списка в формате json с полями "Наименование":"наименование товара","Количество":"количество товара","Ед.изм.":"единица измерения товара" """,
+                                "text": """найди все товары и верни их в виде списка в формате json с полями "Наименование":"наименование товара","Количество":"количество товара","Ед.изм.":"единица измерения товара" . Одним массивом например [
+    {
+      "Наименование": "Воздуховод гибкии изолированный",
+      "Количество": 12,
+      "Ед.изм.": "м"
+    },
+    {
+      "Наименование": "Воздуховод гибкии изолированный",
+      "Количество": 1,
+      "Ед.изм.": "м"
+    }] 
+    """,
                             },
                             {"type": "text", "text": batch},
                         ],
@@ -123,12 +141,15 @@ class XLSXService:
                 ]
 
                 # Получаем ответ от API
-                chat_response = await self._client.chat.complete_async(
-                    model="mistral-large-latest", messages=messages, max_tokens=40000
-                )
+                # chat_response = await self._client.chat.complete_async(
+                #     model="mistral-large-latest", messages=messages, max_tokens=40000
+                # )
 
-                # Получаем содержимое ответа
-                text = chat_response.choices[0].message.content
+                # # Получаем содержимое ответа
+                # text = chat_response.choices[0].message.content
+                response = await llm.chat_completion(messages=messages, model='gpt-4.1-nano-2025-04-14')
+                text=response['text']
+
                 logger.debug(f"Полученный ответ от API: {text}")
 
                 try:

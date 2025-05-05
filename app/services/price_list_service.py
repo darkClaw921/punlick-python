@@ -18,7 +18,10 @@ from datetime import datetime
 from app.core.config import settings
 from app.models.document import PriceListResponse
 import math
+from app.services.llms.llm_factory import LLMFactory
 
+openai_llm = LLMFactory.get_instance("openai")
+llm = openai_llm
 
 class PriceListService:
     """Сервис для работы с прайс-листами и векторной базой данных ChromaDB"""
@@ -950,11 +953,15 @@ class PriceListService:
         try:
             # Ищем JSON-блок между ```json и ```
             json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
-
+            
+            # Если не нашли в формате ```json```, пробуем найти просто JSON в тексте
             if not json_match:
-                raise ValueError("JSON-блок не найден в тексте")
-
-            json_str = json_match.group(1)
+                # Пробуем найти JSON-массив в тексте напрямую
+                text=text.replace("'",'"')
+                data=json.loads(text)
+                return data
+                
+            json_str = json_match.group(0) if not json_match.groups() else json_match.group(1)
             data = json.loads(json_str)
 
             if not isinstance(data, list):
@@ -1100,7 +1107,7 @@ class PriceListService:
                 
                 print(f"Преобразование наименований товаров {i+1}-{i+len(batch)} из {len(items)}")
                 
-                pprint(batch)
+                # pprint(batch)
                 # Получаем наименования для текущей пачки
                 names = [item.get("Наименование", "") + ' Количество:' + str(item.get("Количество", "")) + ' Ед.изм.:' + str(item.get("Ед.изм.", "")) for item in batch]
 
@@ -1121,22 +1128,29 @@ class PriceListService:
                         {"role": "user", "content": f'верни правильное наименование для: {names} в формате json список с полями "Длина", "Ед. изм.", "Кол-во", "Наименование", "Размер", "Тип", "Толщина", "Угол" '}
                     ]
 
-                    # print(messages)
-                    response = await self.mistral_client.chat.complete_async(
-                        model="mistral-small-latest",
-                        messages=messages,
-                            # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
-                            # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
+                    # pprint(messages)
+                    # response = await self.mistral_client.chat.complete_async(
+                    #     model="mistral-small-latest",
+                    #     messages=messages,
+                    #         # {"role": "system", "content": f"Ты помощник для поиска соответствий в базе данных. Ты должен найти соответствие для запроса среди списка текстов. Если соответствие найдено, верни его в формате json с полями 'Наименование', 'Ед.изм.', 'Количество'. Если соответствие не найдено, верни null. и учти что Ф это d. Вот еще правила  {promt}"},
+                    #         # {"role": "user", "content": f"Найди соответствие для: {item_name} среди: {allTexts}"}
                         
                     
-                        max_tokens=50000,
-                        temperature=0.9
-                    )
+                    #     max_tokens=50000,
+                    #     temperature=0.9
+                    # )
+
+                    # response = await llm.chat_completion(messages=messages, model="gpt-4.1-nano-2025-04-14")
+                    response = await llm.chat_completion(messages=messages, model="gpt-4o-mini")
                     # pprint(response)
-                    answer = self.prepare_text_anserw_to_dict(response.choices[0].message.content)
+                    text=response['text']
+                    answer = self.prepare_text_anserw_to_dict(text)
                     # print("Правильное наименование: ", answer)
-                    pprint(answer)
-                    prepare_anser=process_row_from_list(answer)
+                    # pprint(answer)
+                    try:
+                        prepare_anser=process_row_from_list(answer)
+                    except:
+                        continue
                     # try:
                     #     answerName = answer[0]["Наименование"]
                     # except:
@@ -1173,7 +1187,7 @@ class PriceListService:
             
             progress_bars[progress_bar_id]['processed'] = 100
             progress_bars[progress_bar_id]['text'] = "Обработка завершена"
-            pprint(enriched_items)
+            # pprint(enriched_items)
             return enriched_items
             
         except Exception as e:

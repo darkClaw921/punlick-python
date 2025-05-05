@@ -7,6 +7,10 @@ from mistralai import Mistral
 from app.core.config import settings
 from app.models.document import DocumentResponse, DocumentItem
 from app.services.price_list_service import PriceListService
+from app.services.llms.llm_factory import LLMFactory
+
+openai_llm = LLMFactory.get_instance("openai")
+llm = openai_llm
 
 logger.add(
     "chat_service.log",
@@ -52,7 +56,9 @@ class ChatService:
             json_match = re.search(r"```json\s*(.*?)\s*```", text, re.DOTALL)
 
             if not json_match:
-                raise ValueError("JSON-блок не найден в тексте")
+                text=text.replace("'",'"')
+                data=json.loads(text)
+                return data
 
             json_str = json_match.group(1)
             data = json.loads(json_str)
@@ -90,12 +96,14 @@ class ChatService:
             ]
 
             # Получаем ответ от API
-            chat_response = await self._client.chat.complete_async(
-                model="mistral-large-latest", messages=messages
-            )
+            # chat_response = await self._client.chat.complete_async(
+            #     model="mistral-large-latest", messages=messages
+            # )
             
             # Получаем содержимое ответа
-            text = chat_response.choices[0].message.content
+            # text = chat_response.choices[0].message.content
+            response = await llm.chat_completion(messages=messages, model='gpt-4.1-nano-2025-04-14')
+            text = response['text']
             logger.debug(f"Полученный ответ от API: {text}")
             text = self.prepare_text_anserw_to_dict(text)
             self.update_progress_bar(message_id, "Переименование позиций", 20, 100)
