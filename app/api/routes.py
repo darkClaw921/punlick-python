@@ -766,7 +766,7 @@ async def get_progress_bar(type_process: str, progress_bar_id: str):
     """Получение прогресс-бара по ID"""
     logger.debug(f"Получение прогресс-бара для {type_process} с ID {progress_bar_id}")
     try:
-        if type_process == "xlsx":
+        if type_process in ["xlsx", "xls", "document", ]:
             progress_data = xlsx_service.get_progress_bar(progress_bar_id)
         elif type_process in ["ocr", "image"]:
             progress_data = ocr_service.get_progress_bar(progress_bar_id)
